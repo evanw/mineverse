@@ -1,0 +1,49 @@
+class App {
+  var _vector3 = THREE.Vector3.new()
+  var _scene = THREE.Scene.new()
+  var _camera = THREE.PerspectiveCamera.new(75, 1, 0.1, 1000)
+  var _renderer = THREE.WebGLRenderer.new()
+  var _world World = null
+
+  def new {
+    _world = World.new(_scene)
+    _camera.position.y = 50
+    _camera.rotation.order = "YXZ"
+  }
+
+  def element dynamic {
+    return _renderer.domElement
+  }
+
+  def resize(width int, height int) {
+    _camera.setViewOffset(width, height, 0, 0, width, height)
+    _camera.updateProjectionMatrix()
+    _renderer.setSize(width, height)
+  }
+
+  def moveCamera(deltaX double, deltaY double) {
+    if deltaX != 0 {
+      _vector3.set(deltaX, 0, 0)
+      _vector3.applyEuler(_camera.rotation)
+      _camera.position.add(_vector3)
+    }
+
+    if deltaY != 0 {
+      _vector3.set(0, 0, deltaY)
+      _vector3.applyEuler(_camera.rotation)
+      _camera.position.add(_vector3)
+    }
+  }
+
+  def rotateCamera(deltaX double, deltaY double) {
+    var rotation = _camera.rotation
+    rotation.x = Math.min(Math.PI / 2, Math.max(-Math.PI / 2, rotation.x - deltaY))
+    rotation.y -= deltaX
+    rotation.y -= Math.floor(rotation.y / (Math.PI * 2)) * (Math.PI * 2)
+  }
+
+  def tick(seconds double) {
+    _world.tick(_camera.position)
+    _renderer.render(_scene, _camera)
+  }
+}

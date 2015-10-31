@@ -1,0 +1,11 @@
+class World {
+  var _terrain Terrain = null
+
+  def new(scene dynamic) {
+    _terrain = Terrain.new(scene)
+  }
+
+  def tick(eye dynamic) {
+    _terrain.tick(eye)
+  }
+}
