@@ -4,12 +4,16 @@ class App {
   var _camera = THREE.PerspectiveCamera.new(75, 1, 0.1, 1000)
   var _renderer = THREE.WebGLRenderer.new()
   var _world World = null
+  var _cameraAABB = AABB.new
 
   def new {
     _world = World.new(_scene)
-    _camera.position.y = 50
+    _cameraAABB.center.y = 50
+    _cameraAABB.radius.set(0.4, 0.4, 0.4)
     _camera.rotation.order = "YXZ"
     _renderer.setClearColor(World.CLEAR_COLOR)
+    _renderer.gammaInput = true
+    _renderer.gammaOutput = true
   }
 
   def element dynamic {
@@ -23,16 +27,10 @@ class App {
   }
 
   def moveCamera(deltaX double, deltaY double) {
-    if deltaX != 0 {
-      _vector3.set(deltaX, 0, 0)
+    if deltaX != 0 || deltaY != 0 {
+      _vector3.set(deltaX, 0, deltaY)
       _vector3.applyEuler(_camera.rotation)
-      _camera.position.add(_vector3)
-    }
-
-    if deltaY != 0 {
-      _vector3.set(0, 0, deltaY)
-      _vector3.applyEuler(_camera.rotation)
-      _camera.position.add(_vector3)
+      _world.moveAABB(_cameraAABB, _vector3)
     }
   }
 
@@ -44,7 +42,10 @@ class App {
   }
 
   def tick(seconds double) {
-    _world.tick(_camera.position)
+    _camera.position.copy(_cameraAABB.center)
+    _camera.updateMatrixWorld()
+    _camera.matrixWorldInverse.getInverse(_camera.matrixWorld)
+    _world.tick(_camera)
     _renderer.render(_scene, _camera)
   }
 }

@@ -1,450 +1,3 @@
-enum Cell {
-  EMPTY
-  DIRT
-  GRASS
-  STONE
-  SNOW
-  METAL
-}
-
-enum Direction {
-  XNEG
-  YNEG
-  ZNEG
-  XPOS
-  YPOS
-  ZPOS
-
-  def deltaX int {
-    return self == XNEG ? -1 : self == XPOS ? 1 : 0
-  }
-
-  def deltaY int {
-    return self == YNEG ? -1 : self == YPOS ? 1 : 0
-  }
-
-  def deltaZ int {
-    return self == ZNEG ? -1 : self == ZPOS ? 1 : 0
-  }
-
-  def opposite Direction {
-    return ((self + 3) % 6) as Direction
-  }
-}
-
-enum Face {
-  TOP
-  BOTTOM
-  SIDES
-}
-
-class Chunk {
-  const _group dynamic
-  const _material dynamic
-  const _startX int
-  const _startY int
-  const _startZ int
-  const _data = Uint8Array.new(SIZE_X * SIZE_Y * SIZE_Z)
-  const _neighbors List<Chunk> = [null, null, null, null, null, null]
-  var _vertices List<double> = null
-  var _metadata List<double> = null
-  var _indices List<int> = null
-  var _geometry dynamic = null
-  var _mesh dynamic = null
-  var _isInvalid = false
-
-  def destroy {
-    if _mesh != null { _group.remove(_mesh) }
-    if _geometry != null { _geometry.dispose() }
-
-    # Unlink from neighbors
-    for i in 0..6 {
-      var neighbor = _neighbors[i]
-      if neighbor != null {
-        var opposite = (i as Direction).opposite
-        assert(neighbor._neighbors[opposite] == self)
-        neighbor._neighbors[opposite].invalidate
-        neighbor._neighbors[opposite] = null
-      }
-    }
-  }
-
-  def key int {
-    return Terrain.createKey(_startX, _startY, _startZ)
-  }
-
-  def startX double {
-    return _startX
-  }
-
-  def startY double {
-    return _startY
-  }
-
-  def startZ double {
-    return _startZ
-  }
-
-  def data Uint8Array {
-    return _data
-  }
-
-  def geometry Uint8Array {
-    return _geometry
-  }
-
-  def invalidate {
-    _isInvalid = true
-  }
-
-  def neighbor(direction Direction) Chunk {
-    return _neighbors[direction]
-  }
-
-  def contains(x int, y int, z int) bool {
-    x -= _startX
-    y -= _startY
-    z -= _startZ
-    return
-      x >= 0 && x < SIZE_X &&
-      y >= 0 && y < SIZE_Y &&
-      z >= 0 && z < SIZE_Z
-  }
-
-  def linkTo(other Chunk, direction Direction) {
-    assert(other._startX == _startX + direction.deltaX * SIZE_X)
-    assert(other._startY == _startY + direction.deltaY * SIZE_Y)
-    assert(other._startZ == _startZ + direction.deltaZ * SIZE_Z)
-
-    assert(_neighbors[direction] == null)
-    assert(other._neighbors[direction.opposite] == null)
-
-    _neighbors[direction] = other
-    other._neighbors[direction.opposite] = self
-
-    invalidate
-    other.invalidate
-  }
-
-  def get(x int, y int, z int) Cell {
-    if contains(x, y, z) {
-      return _data[(x - _startX) + ((y - _startY) + (z - _startZ) * SIZE_Y) * SIZE_X] as Cell
-    }
-    return .EMPTY
-  }
-
-  def getWithNeighbors(x int, y int, z int) Cell {
-    var chunk = self
-
-    if x < chunk._startX && chunk.neighbor(.XNEG) != null { chunk = chunk.neighbor(.XNEG) }
-    else if x >= chunk._startX + SIZE_X && chunk.neighbor(.XPOS) != null { chunk = chunk.neighbor(.XPOS) }
-
-    if y < chunk._startY && chunk.neighbor(.YNEG) != null { chunk = chunk.neighbor(.YNEG) }
-    else if y >= chunk._startY + SIZE_Y && chunk.neighbor(.YPOS) != null { chunk = chunk.neighbor(.YPOS) }
-
-    if z < chunk._startZ && chunk.neighbor(.ZNEG) != null { chunk = chunk.neighbor(.ZNEG) }
-    else if z >= chunk._startZ + SIZE_Z && chunk.neighbor(.ZPOS) != null { chunk = chunk.neighbor(.ZPOS) }
-
-    return chunk.get(x, y, z)
-  }
-
-  def set(x int, y int, z int, cell Cell) {
-    if contains(x, y, z) {
-      x -= _startX
-      y -= _startY
-      z -= _startZ
-      _data[x + (y + z * SIZE_Y) * SIZE_X] = cell
-      invalidate
-
-      # Also invalidate neighboring chunks
-      if x == 0 && neighbor(.XNEG) != null { neighbor(.XNEG).invalidate }
-      if y == 0 && neighbor(.YNEG) != null { neighbor(.YNEG).invalidate }
-      if z == 0 && neighbor(.ZNEG) != null { neighbor(.ZNEG).invalidate }
-      if x == SIZE_X - 1 && neighbor(.XPOS) != null { neighbor(.XPOS).invalidate }
-      if y == SIZE_Y - 1 && neighbor(.YPOS) != null { neighbor(.YPOS).invalidate }
-      if z == SIZE_Z - 1 && neighbor(.ZPOS) != null { neighbor(.ZPOS).invalidate }
-    }
-  }
-
-  def update {
-    if !_isInvalid {
-      return
-    }
-
-    _vertices = []
-    _metadata = []
-    _indices = []
-
-    # Generate geometry
-    for x in _startX.._startX + SIZE_X + 1 {
-      for y in _startY.._startY + SIZE_Y + 1 {
-        for z in _startZ.._startZ + SIZE_Z + 1 {
-          # Draw quads on the x axis
-          if y < _startY + SIZE_Y && z < _startZ + SIZE_Z {
-            var neg = getWithNeighbors(x - 1, y, z)
-            var pos = getWithNeighbors(x, y, z)
-
-            if neg == .EMPTY && pos != .EMPTY {
-              _adjacent[0] = getWithNeighbors(x - 1, y - 1, z - 1)
-              _adjacent[1] = getWithNeighbors(x - 1, y + 0, z - 1)
-              _adjacent[2] = getWithNeighbors(x - 1, y + 1, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x - 1, y - 1, z + 0)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x - 1, y + 1, z + 0)
-
-              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z + 1)
-              _adjacent[7] = getWithNeighbors(x - 1, y + 0, z + 1)
-              _adjacent[8] = getWithNeighbors(x - 1, y + 1, z + 1)
-
-              _appendQuad(x, y + 1, z + 1, 0, 0, -1, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES])
-            }
-
-            else if neg != .EMPTY && pos == .EMPTY {
-              _adjacent[0] = getWithNeighbors(x, y - 1, z + 1)
-              _adjacent[1] = getWithNeighbors(x, y + 0, z + 1)
-              _adjacent[2] = getWithNeighbors(x, y + 1, z + 1)
-
-              _adjacent[3] = getWithNeighbors(x, y - 1, z + 0)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x, y + 1, z + 0)
-
-              _adjacent[6] = getWithNeighbors(x, y - 1, z - 1)
-              _adjacent[7] = getWithNeighbors(x, y + 0, z - 1)
-              _adjacent[8] = getWithNeighbors(x, y + 1, z - 1)
-
-              _appendQuad(x, y + 1, z, 0, 0, 1, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES])
-            }
-          }
-
-          # Draw quads on the y axis
-          if x < _startX + SIZE_X && z < _startZ + SIZE_Z {
-            var neg = getWithNeighbors(x, y - 1, z)
-            var pos = getWithNeighbors(x, y, z)
-
-            if neg == .EMPTY && pos != .EMPTY {
-              _adjacent[0] = getWithNeighbors(x + 1, y - 1, z + 1)
-              _adjacent[1] = getWithNeighbors(x + 1, y - 1, z + 0)
-              _adjacent[2] = getWithNeighbors(x + 1, y - 1, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z + 1)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y - 1, z - 1)
-
-              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z + 1)
-              _adjacent[7] = getWithNeighbors(x - 1, y - 1, z + 0)
-              _adjacent[8] = getWithNeighbors(x - 1, y - 1, z - 1)
-
-              _appendQuad(x, y, z, 1, 0, 0, 0, 0, 1, TEXTURE_INDEX[pos][Face.BOTTOM])
-            }
-
-            else if neg != .EMPTY && pos == .EMPTY {
-              _adjacent[0] = getWithNeighbors(x - 1, y, z + 1)
-              _adjacent[1] = getWithNeighbors(x - 1, y, z + 0)
-              _adjacent[2] = getWithNeighbors(x - 1, y, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y, z + 1)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y, z - 1)
-
-              _adjacent[6] = getWithNeighbors(x + 1, y, z + 1)
-              _adjacent[7] = getWithNeighbors(x + 1, y, z + 0)
-              _adjacent[8] = getWithNeighbors(x + 1, y, z - 1)
-
-              _appendQuad(x + 1, y, z, -1, 0, 0, 0, 0, 1, TEXTURE_INDEX[neg][Face.TOP])
-            }
-          }
-
-          # Draw quads on the z axis
-          if x < _startX + SIZE_X && y < _startY + SIZE_Y {
-            var neg = getWithNeighbors(x, y, z - 1)
-            var pos = getWithNeighbors(x, y, z)
-
-            if neg == .EMPTY && pos != .EMPTY {
-              _adjacent[0] = getWithNeighbors(x + 1, y - 1, z - 1)
-              _adjacent[1] = getWithNeighbors(x + 1, y + 0, z - 1)
-              _adjacent[2] = getWithNeighbors(x + 1, y + 1, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z - 1)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y + 1, z - 1)
-
-              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z - 1)
-              _adjacent[7] = getWithNeighbors(x - 1, y + 0, z - 1)
-              _adjacent[8] = getWithNeighbors(x - 1, y + 1, z - 1)
-
-              _appendQuad(x, y + 1, z, 1, 0, 0, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES])
-            }
-
-            else if neg != .EMPTY && pos == .EMPTY {
-              _adjacent[0] = getWithNeighbors(x - 1, y - 1, z)
-              _adjacent[1] = getWithNeighbors(x - 1, y + 0, z)
-              _adjacent[2] = getWithNeighbors(x - 1, y + 1, z)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y + 1, z)
-
-              _adjacent[6] = getWithNeighbors(x + 1, y - 1, z)
-              _adjacent[7] = getWithNeighbors(x + 1, y + 0, z)
-              _adjacent[8] = getWithNeighbors(x + 1, y + 1, z)
-
-              _appendQuad(x + 1, y + 1, z, -1, 0, 0, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES])
-            }
-          }
-        }
-      }
-    }
-
-    # Remove the old mesh
-    if _mesh != null {
-      _group.remove(_mesh)
-    }
-
-    # Upload the data to the GPU
-    _geometry = THREE.BufferGeometry.new()
-    _geometry.setIndex(THREE.BufferAttribute.new(Uint16Array.new(_indices), 1))
-    _geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_vertices), 3))
-    _geometry.addAttribute("metadata", THREE.BufferAttribute.new(Float32Array.new(_metadata), 3))
-
-    # Add the new mesh
-    _mesh = THREE.Mesh.new(_geometry, _material)
-    _group.add(_mesh)
-
-    _isInvalid = false
-  }
-
-  def _appendQuad(x int, y int, z int, ax int, ay int, az int, bx int, by int, bz int, TEXTURE_INDEX int) {
-    var ao0 = _calcAO(_adjacent[5], _adjacent[7], _adjacent[8])
-    var ao1 = _calcAO(_adjacent[1], _adjacent[5], _adjacent[2])
-    var ao2 = _calcAO(_adjacent[1], _adjacent[3], _adjacent[0])
-    var ao3 = _calcAO(_adjacent[3], _adjacent[7], _adjacent[6])
-
-    var s0 = (1 + TEXTURE_INDEX % 16) / 16.0 - 0.0001
-    var t0 = 1 - (TEXTURE_INDEX / 16) / 16.0 - 0.0001
-    var s1 = s0 - 1 / 16.0 + 0.0002
-    var t1 = t0 - 1 / 16.0 + 0.0002
-
-    var i = _vertices.count / 3
-    _indices.append(i)
-    _indices.append(i + 1)
-    _indices.append(i + 2)
-    _indices.append(i)
-    _indices.append(i + 2)
-    _indices.append(i + 3)
-
-    _appendVertex(x, y, z, s0, t0, ao0)
-    _appendVertex(x + ax, y + ay, z + az, s1, t0, ao1)
-    _appendVertex(x + ax + bx, y + ay + by, z + az + bz, s1, t1, ao2)
-    _appendVertex(x + bx, y + by, z + bz, s0, t1, ao3)
-  }
-
-  def _appendVertex(x double, y double, z double, s double, t double, ao double) {
-    _vertices.append(x)
-    _vertices.append(y)
-    _vertices.append(z)
-    _metadata.append(s)
-    _metadata.append(t)
-    _metadata.append(ao)
-  }
-
-  def generate {
-    assert(_startX % SIZE_X == 0)
-    assert(_startY % SIZE_Y == 0)
-    assert(_startZ % SIZE_Z == 0)
-
-    # Generate terrain
-    for z in _startZ.._startZ + SIZE_Z {
-      for x in _startX.._startX + SIZE_X {
-        var bottom = 0
-        var top = Math.round(SIZE_Y * 1.1 + SIZE_Y / 2 * Terrain.height(x * 0.02, z * 0.02)) as int
-        var i = (x - _startX) + (z - _startZ) * SIZE_X * SIZE_Y
-
-        for y in Math.max(bottom, _startY)..Math.min(top, _startY + SIZE_Y) {
-          var cell Cell =
-            y + 1 == top ? .GRASS :
-            y < top - 3 ? .STONE :
-            .DIRT
-          data[i + (y - _startY) * SIZE_X] = cell
-        }
-      }
-    }
-
-    # Generate walkways
-    if true {
-      for level in 0..6 {
-        var y = SIZE_Y * 2 - level * 10 - 1
-        if y < _startY || y >= _startY + SIZE_Y {
-          continue
-        }
-        for z in _startZ.._startZ + SIZE_Z {
-          for x in _startX.._startX + SIZE_X {
-            # Convert to barycentric coordinates
-            var px = x * 0.01
-            var py = z * 0.01
-            py /= 0.866025404
-            px -= 0.5 * py
-            if (level & 1) != 0 {
-              px -= 1.0 / 3.0
-            }
-            px -= Math.floor(px)
-            py -= Math.floor(py)
-            var pz = 1 - px - py
-            if pz < 0 {
-              px = 1 - px
-              py = 1 - py
-              pz = -pz
-            }
-
-            # Cut out hexagons
-            var r = 2.0 / 3.0
-            var t = 0.03
-            var max = Math.max(Math.max(px, py), pz)
-            var min = Math.min(Math.min(px, py), pz)
-            if max > r + t || (max < r - t && min > t) {
-              continue
-            }
-            data[(x - _startX) + ((y - _startY) + (z - _startZ) * SIZE_X) * SIZE_Y] = Cell.METAL
-          }
-        }
-      }
-    }
-
-    invalidate
-  }
-}
-
-namespace Chunk {
-  const SHIFT_X = 5
-  const SHIFT_Y = 5
-  const SHIFT_Z = 5
-
-  const SIZE_X = 1 << SHIFT_X
-  const SIZE_Y = 1 << SHIFT_Y
-  const SIZE_Z = 1 << SHIFT_Z
-
-  const _adjacent List<Cell> = [
-    .EMPTY, .EMPTY, .EMPTY,
-    .EMPTY, .EMPTY, .EMPTY,
-    .EMPTY, .EMPTY, .EMPTY,
-  ]
-
-  const TEXTURE_INDEX List<List<int>> = [
-    [0, 0, 0], # EMPTY
-    [2, 2, 2], # DIRT
-    [0, 2, 3], # GRASS
-    [1, 1, 1], # STONE
-    [66, 2, 68], # SNOW
-    [6, 6, 5], # METAL
-  ]
-
-  def _calcAO(side1 Cell, side2 Cell, corner Cell) double {
-    if side1 != .EMPTY && side2 != .EMPTY { return 0.2 }
-    if side1 != .EMPTY || side2 != .EMPTY || corner != .EMPTY { return 0.5 }
-    return 1
-  }
-}
-
 class Terrain {
   const _world World
   const _texture dynamic
@@ -453,6 +6,9 @@ class Terrain {
   const _chunkMap IntMap<Chunk> = {}
   const _group = THREE.Group.new()
   const _light = THREE.DirectionalLight.new(0xFFFFFF, 1)
+  const _frustum = THREE.Frustum.new()
+  const _box = THREE.Box3.new()
+  const _matrix = THREE.Matrix4.new()
   const _drawDistance = 64
 
   def new(world World) {
@@ -486,6 +42,7 @@ class Terrain {
         }
       ",
       "fragmentShader": "\n".join([
+        THREE.ShaderChunk.common,
         THREE.ShaderChunk.map_pars_fragment,
         THREE.ShaderChunk.lights_lambert_pars_vertex,
         "
@@ -497,7 +54,7 @@ class Terrain {
         void main() {
           vec2 coord = metadata_.xy;
           float occlusion = metadata_.z;
-          vec3 color = texture2D(map, coord).rgb;
+          vec3 color = inputToLinear(texture2D(map, coord).rgb);
           vec3 normal = normalize(cross(dFdx(position_), dFdy(position_)));
           float fade = max(0.0, 1.0 - length(position_) / drawDistance);
 
@@ -506,8 +63,10 @@ class Terrain {
             diffuse += directionalLightColor[i] * max(0.0, dot(normal, directionalLightDirection[i]));
           }
 
-          gl_FragColor.rgb = mix(clearColor, color * sqrt(0.1 * occlusion + 0.9 * diffuse), fade * fade);
-          gl_FragColor.a = 1.0;
+          color *= 0.1 * occlusion + 0.9 * diffuse;
+          color = mix(inputToLinear(clearColor), color, fade * fade);
+          color = linearToOutput(color);
+          gl_FragColor = vec4(color, 1.0);
         }
         ",
       ]),
@@ -523,20 +82,23 @@ class Terrain {
     world.scene.add(_light)
   }
 
-  def update(x double, y double, z double) {
+  def _update(camera dynamic) {
+    _frustum.setFromMatrix(_matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+
     var maxCenterDistance = _drawDistance + Math.sqrt(Chunk.SIZE_X * Chunk.SIZE_X + Chunk.SIZE_Y * Chunk.SIZE_Y + Chunk.SIZE_Z * Chunk.SIZE_Z) / 2
-    var xmin = Math.floor((x - maxCenterDistance) / Chunk.SIZE_X) as int
-    var ymin = Math.floor((y - maxCenterDistance) / Chunk.SIZE_Y) as int
-    var zmin = Math.floor((z - maxCenterDistance) / Chunk.SIZE_Z) as int
-    var xmax = Math.ceil((x + maxCenterDistance) / Chunk.SIZE_X) as int
-    var ymax = Math.ceil((y + maxCenterDistance) / Chunk.SIZE_Y) as int
-    var zmax = Math.ceil((z + maxCenterDistance) / Chunk.SIZE_Z) as int
+    var eye = camera.position
+    var xmin = Math.floor((eye.x - maxCenterDistance) / Chunk.SIZE_X) as int
+    var ymin = Math.floor((eye.y - maxCenterDistance) / Chunk.SIZE_Y) as int
+    var zmin = Math.floor((eye.z - maxCenterDistance) / Chunk.SIZE_Z) as int
+    var xmax = Math.ceil((eye.x + maxCenterDistance) / Chunk.SIZE_X) as int
+    var ymax = Math.ceil((eye.y + maxCenterDistance) / Chunk.SIZE_Y) as int
+    var zmax = Math.ceil((eye.z + maxCenterDistance) / Chunk.SIZE_Z) as int
 
     # Remove old chunks
     var i = 0
     while i < _chunkList.count {
       var chunk = _chunkList[i]
-      if distance(x, y, z, chunk.startX + Chunk.SIZE_X * 0.5, chunk.startY + Chunk.SIZE_Y * 0.5, chunk.startZ + Chunk.SIZE_Z * 0.5) > maxCenterDistance {
+      if distance(eye.x, eye.y, eye.z, chunk.startX + Chunk.SIZE_X * 0.5, chunk.startY + Chunk.SIZE_Y * 0.5, chunk.startZ + Chunk.SIZE_Z * 0.5) > maxCenterDistance {
         _chunkMap.remove(chunk.key)
         _chunkList.removeAt(i)
         chunk.destroy
@@ -545,17 +107,23 @@ class Terrain {
       }
     }
 
-    # Add new chunks
-    for chunkX in xmin..xmax {
-      var startX = chunkX * Chunk.SIZE_X
+    var bestStartX = 0
+    var bestStartY = 0
+    var bestStartZ = 0
+    var bestScore = -Math.INFINITY
 
-      for chunkY in ymin..ymax {
-        var startY = chunkY * Chunk.SIZE_Y
+    # Add one new chunk
+    for x in xmin..xmax {
+      var startX = x * Chunk.SIZE_X
 
-        for chunkZ in zmin..zmax {
-          var startZ = chunkZ * Chunk.SIZE_Z
+      for y in ymin..ymax {
+        var startY = y * Chunk.SIZE_Y
 
-          if distance(x, y, z, startX + Chunk.SIZE_X * 0.5, startY + Chunk.SIZE_Y * 0.5, startZ + Chunk.SIZE_Z * 0.5) > maxCenterDistance {
+        for z in zmin..zmax {
+          var startZ = z * Chunk.SIZE_Z
+          var centerDistance = distance(eye.x, eye.y, eye.z, startX + Chunk.SIZE_X * 0.5, startY + Chunk.SIZE_Y * 0.5, startZ + Chunk.SIZE_Z * 0.5)
+
+          if centerDistance > maxCenterDistance {
             continue
           }
 
@@ -563,36 +131,120 @@ class Terrain {
           var chunk = _chunkMap.get(key, null)
 
           if chunk == null {
-            chunk = Chunk.new(_group, _material, startX, startY, startZ)
-            chunk.generate
-            _chunkMap[key] = chunk
-            _chunkList.append(chunk)
+            _box.min.set(startX, startY, startZ)
+            _box.max.set(startX + Chunk.SIZE_X, startY + Chunk.SIZE_Y, startZ + Chunk.SIZE_Z)
 
-            for j in 0..6 {
-              var direction = j as Direction
-              var otherX = startX + direction.deltaX * Chunk.SIZE_X
-              var otherY = startY + direction.deltaY * Chunk.SIZE_Y
-              var otherZ = startZ + direction.deltaZ * Chunk.SIZE_Z
-              var other = _chunkMap.get(createKey(otherX, otherY, otherZ), null)
-              if other != null {
-                chunk.linkTo(other, direction)
-              }
+            var isInView = _frustum.intersectsBox(_box)
+            var score = isInView ? _drawDistance - centerDistance : -centerDistance
+
+            if score > bestScore {
+              bestStartX = startX
+              bestStartY = startY
+              bestStartZ = startZ
+              bestScore = score
             }
-
-            # Only add one chunk per frame
-            return
           }
+        }
+      }
+    }
+
+    if bestScore > -Math.INFINITY {
+      var chunk = Chunk.new(_group, _material, bestStartX, bestStartY, bestStartZ)
+      chunk.generate
+      _chunkMap[createKey(bestStartX, bestStartY, bestStartZ)] = chunk
+      _chunkList.append(chunk)
+
+      for j in 0..6 {
+        var direction = j as Direction
+        var otherX = bestStartX + direction.deltaX * Chunk.SIZE_X
+        var otherY = bestStartY + direction.deltaY * Chunk.SIZE_Y
+        var otherZ = bestStartZ + direction.deltaZ * Chunk.SIZE_Z
+        var other = _chunkMap.get(createKey(otherX, otherY, otherZ), null)
+
+        if other != null {
+          chunk.linkTo(other, direction)
         }
       }
     }
   }
 
-  def tick(eye dynamic) {
-    update(eye.x, eye.y, eye.z)
+  def tick(camera dynamic) {
+    _update(camera)
     for chunk in _chunkList {
       chunk.update
     }
     _material.uniforms.drawDistance.value = _drawDistance
+  }
+
+  def get(x int, y int, z int) Cell {
+    var key = createKey(
+      x & ~(Chunk.SIZE_X - 1),
+      y & ~(Chunk.SIZE_Y - 1),
+      z & ~(Chunk.SIZE_Z - 1))
+    var chunk = _chunkMap.get(key, null)
+    if chunk != null {
+      return chunk.get(x, y, z)
+    }
+    return .EMPTY
+  }
+
+  def _isEmpty(xmin int, xmax int, ymin int, ymax int, zmin int, zmax int) bool {
+    for x in xmin..xmax + 1 {
+      for y in ymin..ymax + 1 {
+        for z in zmin..zmax + 1 {
+          if get(x, y, z) != .EMPTY {
+            return false
+          }
+        }
+      }
+    }
+    return true
+  }
+
+  def moveAABB(aabb AABB, delta dynamic) {
+    _moveAlongAxis(aabb, 0, delta.x)
+    _moveAlongAxis(aabb, 1, delta.y)
+    _moveAlongAxis(aabb, 2, delta.z)
+  }
+
+  const _min = THREE.Vector3.new()
+  const _max = THREE.Vector3.new()
+
+  def _moveAlongAxis(aabb AABB, axis int, delta double) {
+    const EPSILON = 0.0001
+
+    var min = _min.copy(aabb.center).sub(aabb.radius).floor()
+    var max = _max.copy(aabb.center).add(aabb.radius).ceil()
+    var center = aabb.center.getComponent(axis)
+    var radius = aabb.radius.getComponent(axis)
+
+    if delta < 0 {
+      var minDelta = Math.floor(center - radius + delta) as int
+      for i = Math.floor(center - radius - 1) as int; i >= minDelta; i-- {
+        if !_isEmpty(
+            axis == 0 ? i : min.x, axis == 0 ? i : max.x - 1,
+            axis == 1 ? i : min.y, axis == 1 ? i : max.y - 1,
+            axis == 2 ? i : min.z, axis == 2 ? i : max.z - 1) {
+          aabb.center.setComponent(axis, i + 1 + radius + EPSILON)
+          return
+        }
+      }
+    }
+
+    else if delta > 0 {
+      var maxDelta = Math.ceil(center + radius + delta - 1) as int
+      for i = Math.ceil(center + radius) as int; i <= maxDelta; i++ {
+        if !_isEmpty(
+            axis == 0 ? i : min.x, axis == 0 ? i : max.x - 1,
+            axis == 1 ? i : min.y, axis == 1 ? i : max.y - 1,
+            axis == 2 ? i : min.z, axis == 2 ? i : max.z - 1) {
+          aabb.center.setComponent(axis, i - radius - EPSILON)
+          return
+        }
+      }
+    }
+
+    aabb.center.setComponent(axis, center + delta)
   }
 }
 

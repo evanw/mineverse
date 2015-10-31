@@ -1,0 +1,446 @@
+enum Cell {
+  EMPTY
+  DIRT
+  GRASS
+  STONE
+  SNOW
+  METAL
+}
+
+enum Direction {
+  XNEG
+  YNEG
+  ZNEG
+  XPOS
+  YPOS
+  ZPOS
+
+  def deltaX int {
+    return self == XNEG ? -1 : self == XPOS ? 1 : 0
+  }
+
+  def deltaY int {
+    return self == YNEG ? -1 : self == YPOS ? 1 : 0
+  }
+
+  def deltaZ int {
+    return self == ZNEG ? -1 : self == ZPOS ? 1 : 0
+  }
+
+  def opposite Direction {
+    return ((self + 3) % 6) as Direction
+  }
+}
+
+enum Face {
+  TOP
+  BOTTOM
+  SIDES
+}
+
+class Chunk {
+  const _group dynamic
+  const _material dynamic
+  const _startX int
+  const _startY int
+  const _startZ int
+  const _data = Uint8Array.new(SIZE_X * SIZE_Y * SIZE_Z)
+  const _neighbors List<Chunk> = [null, null, null, null, null, null]
+  var _vertices List<double> = null
+  var _metadata List<double> = null
+  var _indices List<int> = null
+  var _geometry dynamic = null
+  var _mesh dynamic = null
+  var _isInvalid = false
+
+  def destroy {
+    if _mesh != null { _group.remove(_mesh) }
+    if _geometry != null { _geometry.dispose() }
+
+    # Unlink from neighbors
+    for i in 0..6 {
+      var neighbor = _neighbors[i]
+      if neighbor != null {
+        var opposite = (i as Direction).opposite
+        assert(neighbor._neighbors[opposite] == self)
+        neighbor._neighbors[opposite].invalidate
+        neighbor._neighbors[opposite] = null
+      }
+    }
+  }
+
+  def key int {
+    return Terrain.createKey(_startX, _startY, _startZ)
+  }
+
+  def startX double {
+    return _startX
+  }
+
+  def startY double {
+    return _startY
+  }
+
+  def startZ double {
+    return _startZ
+  }
+
+  def data Uint8Array {
+    return _data
+  }
+
+  def geometry Uint8Array {
+    return _geometry
+  }
+
+  def invalidate {
+    _isInvalid = true
+  }
+
+  def neighbor(direction Direction) Chunk {
+    return _neighbors[direction]
+  }
+
+  def contains(x int, y int, z int) bool {
+    x -= _startX
+    y -= _startY
+    z -= _startZ
+    return
+      x >= 0 && x < SIZE_X &&
+      y >= 0 && y < SIZE_Y &&
+      z >= 0 && z < SIZE_Z
+  }
+
+  def linkTo(other Chunk, direction Direction) {
+    assert(other._startX == _startX + direction.deltaX * SIZE_X)
+    assert(other._startY == _startY + direction.deltaY * SIZE_Y)
+    assert(other._startZ == _startZ + direction.deltaZ * SIZE_Z)
+
+    assert(_neighbors[direction] == null)
+    assert(other._neighbors[direction.opposite] == null)
+
+    _neighbors[direction] = other
+    other._neighbors[direction.opposite] = self
+
+    invalidate
+    other.invalidate
+  }
+
+  def get(x int, y int, z int) Cell {
+    if contains(x, y, z) {
+      return _data[(x - _startX) + ((y - _startY) + (z - _startZ) * SIZE_Y) * SIZE_X] as Cell
+    }
+    return .EMPTY
+  }
+
+  def getWithNeighbors(x int, y int, z int) Cell {
+    var chunk = self
+
+    if x < chunk._startX && chunk.neighbor(.XNEG) != null { chunk = chunk.neighbor(.XNEG) }
+    else if x >= chunk._startX + SIZE_X && chunk.neighbor(.XPOS) != null { chunk = chunk.neighbor(.XPOS) }
+
+    if y < chunk._startY && chunk.neighbor(.YNEG) != null { chunk = chunk.neighbor(.YNEG) }
+    else if y >= chunk._startY + SIZE_Y && chunk.neighbor(.YPOS) != null { chunk = chunk.neighbor(.YPOS) }
+
+    if z < chunk._startZ && chunk.neighbor(.ZNEG) != null { chunk = chunk.neighbor(.ZNEG) }
+    else if z >= chunk._startZ + SIZE_Z && chunk.neighbor(.ZPOS) != null { chunk = chunk.neighbor(.ZPOS) }
+
+    return chunk.get(x, y, z)
+  }
+
+  def set(x int, y int, z int, cell Cell) {
+    if contains(x, y, z) {
+      x -= _startX
+      y -= _startY
+      z -= _startZ
+      _data[x + (y + z * SIZE_Y) * SIZE_X] = cell
+      invalidate
+
+      # Also invalidate neighboring chunks
+      if x == 0 && neighbor(.XNEG) != null { neighbor(.XNEG).invalidate }
+      if y == 0 && neighbor(.YNEG) != null { neighbor(.YNEG).invalidate }
+      if z == 0 && neighbor(.ZNEG) != null { neighbor(.ZNEG).invalidate }
+      if x == SIZE_X - 1 && neighbor(.XPOS) != null { neighbor(.XPOS).invalidate }
+      if y == SIZE_Y - 1 && neighbor(.YPOS) != null { neighbor(.YPOS).invalidate }
+      if z == SIZE_Z - 1 && neighbor(.ZPOS) != null { neighbor(.ZPOS).invalidate }
+    }
+  }
+
+  def update {
+    if !_isInvalid {
+      return
+    }
+
+    _vertices = []
+    _metadata = []
+    _indices = []
+
+    # Generate geometry
+    for x in _startX.._startX + SIZE_X + 1 {
+      for y in _startY.._startY + SIZE_Y + 1 {
+        for z in _startZ.._startZ + SIZE_Z + 1 {
+          # Draw quads on the x axis
+          if y < _startY + SIZE_Y && z < _startZ + SIZE_Z {
+            var neg = getWithNeighbors(x - 1, y, z)
+            var pos = getWithNeighbors(x, y, z)
+
+            if neg == .EMPTY && pos != .EMPTY {
+              _adjacent[0] = getWithNeighbors(x - 1, y - 1, z - 1)
+              _adjacent[1] = getWithNeighbors(x - 1, y + 0, z - 1)
+              _adjacent[2] = getWithNeighbors(x - 1, y + 1, z - 1)
+
+              _adjacent[3] = getWithNeighbors(x - 1, y - 1, z + 0)
+              _adjacent[4] = .EMPTY
+              _adjacent[5] = getWithNeighbors(x - 1, y + 1, z + 0)
+
+              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z + 1)
+              _adjacent[7] = getWithNeighbors(x - 1, y + 0, z + 1)
+              _adjacent[8] = getWithNeighbors(x - 1, y + 1, z + 1)
+
+              _appendQuad(x, y + 1, z + 1, 0, 0, -1, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES])
+            }
+
+            else if neg != .EMPTY && pos == .EMPTY {
+              _adjacent[0] = getWithNeighbors(x, y - 1, z + 1)
+              _adjacent[1] = getWithNeighbors(x, y + 0, z + 1)
+              _adjacent[2] = getWithNeighbors(x, y + 1, z + 1)
+
+              _adjacent[3] = getWithNeighbors(x, y - 1, z + 0)
+              _adjacent[4] = .EMPTY
+              _adjacent[5] = getWithNeighbors(x, y + 1, z + 0)
+
+              _adjacent[6] = getWithNeighbors(x, y - 1, z - 1)
+              _adjacent[7] = getWithNeighbors(x, y + 0, z - 1)
+              _adjacent[8] = getWithNeighbors(x, y + 1, z - 1)
+
+              _appendQuad(x, y + 1, z, 0, 0, 1, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES])
+            }
+          }
+
+          # Draw quads on the y axis
+          if x < _startX + SIZE_X && z < _startZ + SIZE_Z {
+            var neg = getWithNeighbors(x, y - 1, z)
+            var pos = getWithNeighbors(x, y, z)
+
+            if neg == .EMPTY && pos != .EMPTY {
+              _adjacent[0] = getWithNeighbors(x + 1, y - 1, z + 1)
+              _adjacent[1] = getWithNeighbors(x + 1, y - 1, z + 0)
+              _adjacent[2] = getWithNeighbors(x + 1, y - 1, z - 1)
+
+              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z + 1)
+              _adjacent[4] = .EMPTY
+              _adjacent[5] = getWithNeighbors(x + 0, y - 1, z - 1)
+
+              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z + 1)
+              _adjacent[7] = getWithNeighbors(x - 1, y - 1, z + 0)
+              _adjacent[8] = getWithNeighbors(x - 1, y - 1, z - 1)
+
+              _appendQuad(x, y, z, 1, 0, 0, 0, 0, 1, TEXTURE_INDEX[pos][Face.BOTTOM])
+            }
+
+            else if neg != .EMPTY && pos == .EMPTY {
+              _adjacent[0] = getWithNeighbors(x - 1, y, z + 1)
+              _adjacent[1] = getWithNeighbors(x - 1, y, z + 0)
+              _adjacent[2] = getWithNeighbors(x - 1, y, z - 1)
+
+              _adjacent[3] = getWithNeighbors(x + 0, y, z + 1)
+              _adjacent[4] = .EMPTY
+              _adjacent[5] = getWithNeighbors(x + 0, y, z - 1)
+
+              _adjacent[6] = getWithNeighbors(x + 1, y, z + 1)
+              _adjacent[7] = getWithNeighbors(x + 1, y, z + 0)
+              _adjacent[8] = getWithNeighbors(x + 1, y, z - 1)
+
+              _appendQuad(x + 1, y, z, -1, 0, 0, 0, 0, 1, TEXTURE_INDEX[neg][Face.TOP])
+            }
+          }
+
+          # Draw quads on the z axis
+          if x < _startX + SIZE_X && y < _startY + SIZE_Y {
+            var neg = getWithNeighbors(x, y, z - 1)
+            var pos = getWithNeighbors(x, y, z)
+
+            if neg == .EMPTY && pos != .EMPTY {
+              _adjacent[0] = getWithNeighbors(x + 1, y - 1, z - 1)
+              _adjacent[1] = getWithNeighbors(x + 1, y + 0, z - 1)
+              _adjacent[2] = getWithNeighbors(x + 1, y + 1, z - 1)
+
+              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z - 1)
+              _adjacent[4] = .EMPTY
+              _adjacent[5] = getWithNeighbors(x + 0, y + 1, z - 1)
+
+              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z - 1)
+              _adjacent[7] = getWithNeighbors(x - 1, y + 0, z - 1)
+              _adjacent[8] = getWithNeighbors(x - 1, y + 1, z - 1)
+
+              _appendQuad(x, y + 1, z, 1, 0, 0, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES])
+            }
+
+            else if neg != .EMPTY && pos == .EMPTY {
+              _adjacent[0] = getWithNeighbors(x - 1, y - 1, z)
+              _adjacent[1] = getWithNeighbors(x - 1, y + 0, z)
+              _adjacent[2] = getWithNeighbors(x - 1, y + 1, z)
+
+              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z)
+              _adjacent[4] = .EMPTY
+              _adjacent[5] = getWithNeighbors(x + 0, y + 1, z)
+
+              _adjacent[6] = getWithNeighbors(x + 1, y - 1, z)
+              _adjacent[7] = getWithNeighbors(x + 1, y + 0, z)
+              _adjacent[8] = getWithNeighbors(x + 1, y + 1, z)
+
+              _appendQuad(x + 1, y + 1, z, -1, 0, 0, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES])
+            }
+          }
+        }
+      }
+    }
+
+    # Remove the old mesh
+    if _mesh != null {
+      _group.remove(_mesh)
+    }
+
+    # Upload the data to the GPU
+    _geometry = THREE.BufferGeometry.new()
+    _geometry.setIndex(THREE.BufferAttribute.new(Uint16Array.new(_indices), 1))
+    _geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_vertices), 3))
+    _geometry.addAttribute("metadata", THREE.BufferAttribute.new(Float32Array.new(_metadata), 3))
+
+    # Add the new mesh
+    _mesh = THREE.Mesh.new(_geometry, _material)
+    _group.add(_mesh)
+
+    _isInvalid = false
+  }
+
+  def _appendQuad(x int, y int, z int, ax int, ay int, az int, bx int, by int, bz int, TEXTURE_INDEX int) {
+    var ao0 = _calcAO(_adjacent[5], _adjacent[7], _adjacent[8])
+    var ao1 = _calcAO(_adjacent[1], _adjacent[5], _adjacent[2])
+    var ao2 = _calcAO(_adjacent[1], _adjacent[3], _adjacent[0])
+    var ao3 = _calcAO(_adjacent[3], _adjacent[7], _adjacent[6])
+
+    var s0 = (1 + TEXTURE_INDEX % 16) / 16.0 - 0.0001
+    var t0 = 1 - (TEXTURE_INDEX / 16) / 16.0 - 0.0001
+    var s1 = s0 - 1 / 16.0 + 0.0002
+    var t1 = t0 - 1 / 16.0 + 0.0002
+
+    var i = _vertices.count / 3
+    _indices.append(i)
+    _indices.append(i + 1)
+    _indices.append(i + 2)
+    _indices.append(i)
+    _indices.append(i + 2)
+    _indices.append(i + 3)
+
+    _appendVertex(x, y, z, s0, t0, ao0)
+    _appendVertex(x + ax, y + ay, z + az, s1, t0, ao1)
+    _appendVertex(x + ax + bx, y + ay + by, z + az + bz, s1, t1, ao2)
+    _appendVertex(x + bx, y + by, z + bz, s0, t1, ao3)
+  }
+
+  def _appendVertex(x double, y double, z double, s double, t double, ao double) {
+    _vertices.append(x)
+    _vertices.append(y)
+    _vertices.append(z)
+    _metadata.append(s)
+    _metadata.append(t)
+    _metadata.append(ao)
+  }
+
+  def generate {
+    assert(_startX % SIZE_X == 0)
+    assert(_startY % SIZE_Y == 0)
+    assert(_startZ % SIZE_Z == 0)
+
+    # Generate terrain
+    for z in _startZ.._startZ + SIZE_Z {
+      for x in _startX.._startX + SIZE_X {
+        var bottom = 0
+        var top = Math.round(SIZE_Y * 1.1 + SIZE_Y / 2 * Terrain.height(x * 0.02, z * 0.02)) as int
+        var i = (x - _startX) + (z - _startZ) * SIZE_X * SIZE_Y
+
+        for y in Math.max(bottom, _startY)..Math.min(top, _startY + SIZE_Y) {
+          var cell Cell =
+            y + 1 == top ? .GRASS :
+            y < top - 3 ? .STONE :
+            .DIRT
+          data[i + (y - _startY) * SIZE_X] = cell
+        }
+      }
+    }
+
+    # Generate walkways
+    if true {
+      for level in 0..6 {
+        var y = SIZE_Y * 2 - level * 10 - 1
+        if y < _startY || y >= _startY + SIZE_Y {
+          continue
+        }
+        for z in _startZ.._startZ + SIZE_Z {
+          for x in _startX.._startX + SIZE_X {
+            # Convert to barycentric coordinates
+            var px = x * 0.01
+            var py = z * 0.01
+            py /= 0.866025404
+            px -= 0.5 * py
+            if (level & 1) != 0 {
+              px -= 1.0 / 3.0
+            }
+            px -= Math.floor(px)
+            py -= Math.floor(py)
+            var pz = 1 - px - py
+            if pz < 0 {
+              px = 1 - px
+              py = 1 - py
+              pz = -pz
+            }
+
+            # Cut out hexagons
+            var r = 2.0 / 3.0
+            var t = 0.03
+            var max = Math.max(Math.max(px, py), pz)
+            var min = Math.min(Math.min(px, py), pz)
+            if max > r + t || (max < r - t && min > t) {
+              continue
+            }
+            data[(x - _startX) + ((y - _startY) + (z - _startZ) * SIZE_X) * SIZE_Y] = Cell.METAL
+          }
+        }
+      }
+    }
+
+    invalidate
+  }
+}
+
+namespace Chunk {
+  const SHIFT_X = 5
+  const SHIFT_Y = 5
+  const SHIFT_Z = 5
+
+  const SIZE_X = 1 << SHIFT_X
+  const SIZE_Y = 1 << SHIFT_Y
+  const SIZE_Z = 1 << SHIFT_Z
+
+  const _adjacent List<Cell> = [
+    .EMPTY, .EMPTY, .EMPTY,
+    .EMPTY, .EMPTY, .EMPTY,
+    .EMPTY, .EMPTY, .EMPTY,
+  ]
+
+  const TEXTURE_INDEX List<List<int>> = [
+    [0, 0, 0], # EMPTY
+    [2, 2, 2], # DIRT
+    [0, 2, 3], # GRASS
+    [1, 1, 1], # STONE
+    [66, 2, 68], # SNOW
+    [6, 6, 5], # METAL
+  ]
+
+  def _calcAO(side1 Cell, side2 Cell, corner Cell) double {
+    if side1 != .EMPTY && side2 != .EMPTY { return 0.2 }
+    if side1 != .EMPTY || side2 != .EMPTY || corner != .EMPTY { return 0.5 }
+    return 1
+  }
+}

@@ -1,3 +1,8 @@
+class AABB {
+  var center = THREE.Vector3.new()
+  var radius = THREE.Vector3.new()
+}
+
 class World {
   const _scene dynamic
   const _terrain Terrain
@@ -7,12 +12,16 @@ class World {
     _terrain = Terrain.new(self)
   }
 
+  def moveAABB(aabb AABB, delta dynamic) {
+    _terrain.moveAABB(aabb, delta)
+  }
+
   def scene dynamic {
     return _scene
   }
 
-  def tick(eye dynamic) {
-    _terrain.tick(eye)
+  def tick(camera dynamic) {
+    _terrain.tick(camera)
   }
 }
 
