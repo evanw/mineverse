@@ -5,7 +5,6 @@ class Terrain {
   const _chunkList List<Chunk> = []
   const _chunkMap IntMap<Chunk> = {}
   const _group = THREE.Group.new()
-  const _light = THREE.DirectionalLight.new(0xFFFFFF, 1)
   const _frustum = THREE.Frustum.new()
   const _box = THREE.Box3.new()
   const _matrix = THREE.Matrix4.new()
@@ -15,9 +14,6 @@ class Terrain {
     _world = world
     _texture = THREE.TextureLoader.new().load("terrain.png")
     _texture.minFilter = _texture.magFilter = THREE.NearestFilter
-
-    # Fix "map": true being ignored in the THREE.ShaderMaterial constructor
-    THREE.ShaderMaterial.prototype.map = true
 
     var uniforms = THREE.UniformsUtils.merge([
       THREE.UniformsLib.common,
@@ -75,11 +71,7 @@ class Terrain {
       "map": true,
     })
 
-    _light.position.set(1, 3, 2)
-    _light.position.normalize()
-
     world.scene.add(_group)
-    world.scene.add(_light)
   }
 
   def _update(camera dynamic) {

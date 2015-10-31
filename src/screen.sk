@@ -1,0 +1,133 @@
+class Screen {
+  const _world dynamic
+  const _material dynamic
+  const _vector4 = THREE.Vector4.new()
+  const _vector3 = THREE.Vector3.new()
+  const _matrix = THREE.Matrix4.new()
+  const _scene = THREE.Scene.new()
+  const _camera = THREE.OrthographicCamera.new(0, 1, 0, 1, 0, 1)
+  const renderTarget = THREE.WebGLRenderTarget.new(1, 1, {
+    "minFilter": THREE.LinearFilter,
+    "magFilter": THREE.LinearFilter,
+    "format": THREE.RGBAFormat,
+  })
+
+  def new(world World) {
+    _world = world
+
+    var uniforms = THREE.UniformsUtils.merge([
+      THREE.UniformsLib.common,
+      {"cameraToWorldMatrix": {"type": "m4", "value": THREE.Matrix4.new()}},
+      {"clearColor": {"type": "c", "value": world.clearColor}},
+      {"uvLight": {"type": "v3", "value": THREE.Vector3.new()}},
+      {"rayLight": {"type": "v3", "value": THREE.Vector3.new()}},
+      {"randomSeed": {"type": "f", "value": 0}},
+      {"godrayStrength": {"type": "f", "value": 0}},
+    ])
+    uniforms.map.value = renderTarget
+
+    _material = THREE.ShaderMaterial.new({
+      "uniforms": uniforms,
+      "vertexShader": "\n".join([
+        THREE.ShaderChunk.uv_pars_vertex,
+        "
+        uniform mat4 cameraToWorldMatrix;
+        varying vec3 vRay;
+
+        void main() {
+          vec4 projected = cameraToWorldMatrix * vec4(position.xy, 1.0, 1.0);
+          vUv = uv;
+          vRay = projected.xyz / projected.w;
+          gl_Position = vec4(position, 1.0);
+        }
+        ",
+      ]),
+      "fragmentShader": "\n".join([
+        THREE.ShaderChunk.uv_pars_fragment,
+        THREE.ShaderChunk.map_pars_fragment,
+        "
+        uniform float randomSeed;
+        uniform vec3 clearColor;
+        uniform vec3 rayLight;
+        uniform vec3 uvLight;
+        uniform float godrayStrength;
+        varying vec3 vRay;
+
+        float lightMagnitude(vec3 ray) {
+          float falloff = max(0.0, dot(rayLight, normalize(ray)));
+          return pow(falloff, 4.0);
+        }
+
+        float godray() {
+          if (godrayStrength == 0.0) {
+            return 0.0;
+          }
+
+          float randomOffset = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 deltaRayX = dFdx(vRay) / dFdx(vUv).x;
+          vec3 deltaRayY = dFdy(vRay) / dFdy(vUv).y;
+          const int count = 8;
+          float alpha = 0.0;
+
+          for (int i = 0; i < count; i++) {
+            float t = (float(i) + randomOffset) / float(count);
+            vec2 uv = mix(vUv, uvLight.xy, t * 0.5);
+            vec3 ray = vRay +
+              deltaRayX * (uv.x - vUv.x) +
+              deltaRayY * (uv.y - vUv.y);
+            float magnitude = lightMagnitude(ray);
+
+            if (magnitude != 0.0) {
+              float occlusion = 1.0 - texture2D(map, uv).a;
+              float falloff = 1.0 - t;
+              alpha += occlusion * falloff;
+            }
+          }
+
+          // The integral of (1.0 - t) from 0 to 1 is 0.5
+          alpha *= 2.0;
+
+          return alpha * godrayStrength / float(count);
+        }
+
+        void main() {
+          vec4 color = texture2D(map, vUv);
+          vec3 backgroundColor = mix(clearColor, vec3(1.0), lightMagnitude(vRay));
+          color.rgb = mix(backgroundColor, color.rgb, color.a);
+          color.rgb += godray();
+          gl_FragColor = color;
+        }
+        ",
+      ]),
+      "derivatives": true,
+      "map": true,
+    })
+    _scene.add(THREE.Mesh.new(THREE.PlaneGeometry.new(2, 2, 1, 1), _material))
+  }
+
+  def resize(width int, height int) {
+    renderTarget.setSize(width, height)
+  }
+
+  def render(renderer dynamic, camera dynamic) {
+    var uniforms = _material.uniforms
+    var light = _world.light.position
+
+    _vector4.set(light.x, light.y, light.z, 0)
+    _vector4.applyMatrix4(_matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+    uniforms.uvLight.value.set(
+      _vector4.x / _vector4.w * 0.5 + 0.5,
+      _vector4.y / _vector4.w * 0.5 + 0.5)
+
+    uniforms.rayLight.value.copy(light)
+    uniforms.cameraToWorldMatrix.value.multiplyMatrices(camera.matrixWorld, _matrix.getInverse(camera.projectionMatrix))
+
+    _vector3.set(0, 0, 1.0)
+    _vector3.applyMatrix4(uniforms.cameraToWorldMatrix.value)
+    _vector3.normalize()
+    uniforms.randomSeed.value = Math.random
+    uniforms.godrayStrength.value = Math.max(0, Math.pow(Math.max(0, light.x * _vector3.x + light.y * _vector3.y + light.z * _vector3.z), 4) / 2 - 0.1)
+
+    renderer.render(_scene, _camera)
+  }
+}

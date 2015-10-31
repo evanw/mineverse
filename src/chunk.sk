@@ -429,7 +429,7 @@ namespace Chunk {
     .EMPTY, .EMPTY, .EMPTY,
   ]
 
-  const TEXTURE_INDEX List<List<int>> = [
+  const TEXTURE_INDEX = [
     [0, 0, 0], # EMPTY
     [2, 2, 2], # DIRT
     [0, 2, 3], # GRASS

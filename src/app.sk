@@ -4,14 +4,19 @@ class App {
   var _camera = THREE.PerspectiveCamera.new(75, 1, 0.1, 1000)
   var _renderer = THREE.WebGLRenderer.new()
   var _world World = null
+  var _screen Screen = null
   var _cameraAABB = AABB.new
 
   def new {
+    # Fix "map": true being ignored in the THREE.ShaderMaterial constructor
+    THREE.ShaderMaterial.prototype.map = true
+
     _world = World.new(_scene)
+    _screen = Screen.new(_world)
     _cameraAABB.center.y = 50
     _cameraAABB.radius.set(0.4, 0.4, 0.4)
     _camera.rotation.order = "YXZ"
-    _renderer.setClearColor(_world.clearColor)
+    _renderer.setClearColor(0, 0)
     _renderer.gammaInput = true
     _renderer.gammaOutput = true
   }
@@ -24,6 +29,7 @@ class App {
     _camera.setViewOffset(width, height, 0, 0, width, height)
     _camera.updateProjectionMatrix()
     _renderer.setSize(width, height)
+    _screen.resize(width, height)
   }
 
   def moveCamera(deltaX double, deltaY double) {
@@ -46,6 +52,7 @@ class App {
     _camera.updateMatrixWorld()
     _camera.matrixWorldInverse.getInverse(_camera.matrixWorld)
     _world.tick(_camera)
-    _renderer.render(_scene, _camera)
+    _renderer.render(_scene, _camera, _screen.renderTarget)
+    _screen.render(_renderer, _camera)
   }
 }
