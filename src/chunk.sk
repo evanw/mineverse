@@ -93,6 +93,10 @@ class Chunk {
     return _geometry
   }
 
+  def isInvalid bool {
+    return _isInvalid
+  }
+
   def invalidate {
     _isInvalid = true
   }

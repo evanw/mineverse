@@ -6,6 +6,7 @@ class App {
   var _world World = null
   var _screen Screen = null
   var _cameraAABB = AABB.new
+  var _fps = 0.0
 
   def new {
     # Fix "map": true being ignored in the THREE.ShaderMaterial constructor
@@ -48,11 +49,16 @@ class App {
   }
 
   def tick(seconds double) {
+    _fps = _fps * 0.9 + 0.1 / seconds
     _camera.position.copy(_cameraAABB.center)
     _camera.updateMatrixWorld()
     _camera.matrixWorldInverse.getInverse(_camera.matrixWorld)
-    _world.tick(_camera)
+    _world.tick(seconds, _camera)
     _renderer.render(_scene, _camera, _screen.renderTarget)
     _screen.render(_renderer, _camera)
+  }
+
+  def title string {
+    return "FPS: " + Math.round(_fps).toString + ", cutoff: " + _world.terrain.drawDistance.toString
   }
 }

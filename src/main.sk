@@ -1,9 +1,9 @@
 @entry
 def main {
-  var SHIFT_KEY = 16
-  var oldTitle = document.title
+  const FRAME_SKIP_COUNT = 1 # 30 fps is better than a ragged 60fps since Chrome drops frames sometimes anyway
+  const SHIFT_KEY = 16
+
   var oldTime = 0.0
-  var fps = 0.0
   var pressed = false
   var oldMouse dynamic = null
   var keys IntMap<int> = {}
@@ -46,21 +46,23 @@ def main {
   var resize = => {
     app.resize(window.innerWidth, window.innerHeight)
   }
+  var count = 0
   tick = => {
-    var newTime double = window.performance.now()
-    var seconds = (newTime - oldTime) / 1000
-    oldTime = newTime
+    count++
+    if count % (1 + FRAME_SKIP_COUNT) == 0 {
+      var newTime double = window.performance.now()
+      var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
+      oldTime = newTime
 
-    var speed = (4 + (20 - 4) * keys.get(SHIFT_KEY, 0)) * seconds
-    var deltaX = (keys.get('D', 0) - keys.get('A', 0)) * speed
-    var deltaY = (keys.get('S', 0) - keys.get('W', 0)) * speed
-    app.moveCamera(deltaX, deltaY)
+      var speed = (4 + (20 - 4) * keys.get(SHIFT_KEY, 0)) * seconds
+      var deltaX = (keys.get('D', 0) - keys.get('A', 0)) * speed
+      var deltaY = (keys.get('S', 0) - keys.get('W', 0)) * speed
+      app.moveCamera(deltaX, deltaY)
 
-    app.tick(seconds)
+      app.tick(seconds)
+      document.title = app.title
+    }
     window.requestAnimationFrame(tick)
-
-    fps = fps * 0.9 + 0.1 / seconds
-    document.title = oldTitle + " - FPS: " + Math.round(fps)
   }
   resize()
   tick()

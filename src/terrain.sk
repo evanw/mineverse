@@ -8,7 +8,8 @@ class Terrain {
   const _frustum = THREE.Frustum.new()
   const _box = THREE.Box3.new()
   const _matrix = THREE.Matrix4.new()
-  const _drawDistance = 128
+  var _drawDistance = (MIN_DRAW_DISTANCE + MAX_DRAW_DISTANCE) / 2
+  var _averageFPS = 60.0
 
   def new(world World) {
     _world = world
@@ -102,12 +103,9 @@ class Terrain {
       }
     }
 
-    var bestStartX = 0
-    var bestStartY = 0
-    var bestStartZ = 0
+    var bestChunk Chunk = null
     var bestScore = -Math.INFINITY
 
-    # Add one new chunk
     for x in xmin..xmax {
       var startX = x * Chunk.SIZE_X
 
@@ -126,16 +124,33 @@ class Terrain {
           var chunk = _chunkMap.get(key, null)
 
           if chunk == null {
+            chunk = Chunk.new(_group, _material, startX, startY, startZ)
+            chunk.generate
+            _chunkMap[key] = chunk
+            _chunkList.append(chunk)
+
+            for j in 0..6 {
+              var direction = j as Direction
+              var otherX = startX + direction.deltaX * Chunk.SIZE_X
+              var otherY = startY + direction.deltaY * Chunk.SIZE_Y
+              var otherZ = startZ + direction.deltaZ * Chunk.SIZE_Z
+              var other = _chunkMap.get(createKey(otherX, otherY, otherZ), null)
+
+              if other != null {
+                chunk.linkTo(other, direction)
+              }
+            }
+
             _box.min.set(startX, startY, startZ)
             _box.max.set(startX + Chunk.SIZE_X, startY + Chunk.SIZE_Y, startZ + Chunk.SIZE_Z)
+          }
 
+          if chunk.isInvalid {
             var isInView = _frustum.intersectsBox(_box)
             var score = isInView ? _drawDistance - centerDistance : -centerDistance
 
             if score > bestScore {
-              bestStartX = startX
-              bestStartY = startY
-              bestStartZ = startZ
+              bestChunk = chunk
               bestScore = score
             }
           }
@@ -143,31 +158,22 @@ class Terrain {
       }
     }
 
-    if bestScore > -Math.INFINITY {
-      var chunk = Chunk.new(_group, _material, bestStartX, bestStartY, bestStartZ)
-      chunk.generate
-      _chunkMap[createKey(bestStartX, bestStartY, bestStartZ)] = chunk
-      _chunkList.append(chunk)
-
-      for j in 0..6 {
-        var direction = j as Direction
-        var otherX = bestStartX + direction.deltaX * Chunk.SIZE_X
-        var otherY = bestStartY + direction.deltaY * Chunk.SIZE_Y
-        var otherZ = bestStartZ + direction.deltaZ * Chunk.SIZE_Z
-        var other = _chunkMap.get(createKey(otherX, otherY, otherZ), null)
-
-        if other != null {
-          chunk.linkTo(other, direction)
-        }
-      }
+    # Add one new chunk per frame
+    if bestChunk != null {
+      bestChunk.update
     }
   }
 
-  def tick(camera dynamic) {
+  def drawDistance double {
+    return _drawDistance
+  }
+
+  def tick(seconds double, camera dynamic) {
+    # Adjust the draw distance to maintain a good frame rate
+    _averageFPS = _averageFPS * 0.95 + 0.05 / seconds
+    _drawDistance = Math.max(MIN_DRAW_DISTANCE, Math.min(MAX_DRAW_DISTANCE, _drawDistance + (_averageFPS - TARGET_FPS) * seconds))
+
     _update(camera)
-    for chunk in _chunkList {
-      chunk.update
-    }
     _material.uniforms.drawDistance.value = _drawDistance
   }
 
@@ -244,6 +250,10 @@ class Terrain {
 }
 
 namespace Terrain {
+  const TARGET_FPS = 28
+  const MIN_DRAW_DISTANCE = 64.0
+  const MAX_DRAW_DISTANCE = 128.0
+
   def distance(x1 double, y1 double, z1 double, x2 double, y2 double, z2 double) double {
     x1 -= x2
     y1 -= y2

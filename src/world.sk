@@ -23,7 +23,7 @@ class World {
     terrain.moveAABB(aabb, delta)
   }
 
-  def tick(camera dynamic) {
-    terrain.tick(camera)
+  def tick(seconds double, camera dynamic) {
+    terrain.tick(seconds, camera)
   }
 }
