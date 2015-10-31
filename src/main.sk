@@ -20,8 +20,17 @@ def main {
   var keyup = (e dynamic) => {
     keys[e.which] = 0
   }
-  var mousedown = => {
+  var wheel = (e dynamic) => {
+    if e.ctrlKey {
+      app.moveCamera(0, e.deltaY * 0.1)
+    } else {
+      app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
+    }
+    e.preventDefault()
+  }
+  var mousedown = (e dynamic) => {
     pressed = true
+    e.preventDefault()
   }
   var mouseup = => {
     pressed = false
@@ -64,4 +73,5 @@ def main {
   window.onmousedown = mousedown
   window.onmouseup = mouseup
   window.onmousemove = mousemove
+  window.onwheel = wheel
 }

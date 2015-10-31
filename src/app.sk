@@ -11,7 +11,7 @@ class App {
     _cameraAABB.center.y = 50
     _cameraAABB.radius.set(0.4, 0.4, 0.4)
     _camera.rotation.order = "YXZ"
-    _renderer.setClearColor(World.CLEAR_COLOR)
+    _renderer.setClearColor(_world.clearColor)
     _renderer.gammaInput = true
     _renderer.gammaOutput = true
   }

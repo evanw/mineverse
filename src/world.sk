@@ -4,11 +4,12 @@ class AABB {
 }
 
 class World {
-  const _scene dynamic
+  const scene dynamic
   const _terrain Terrain
+  const clearColor = THREE.Color.new(0x7FBFFF)
 
   def new(scene dynamic) {
-    _scene = scene
+    self.scene = scene
     _terrain = Terrain.new(self)
   }
 
@@ -16,15 +17,7 @@ class World {
     _terrain.moveAABB(aabb, delta)
   }
 
-  def scene dynamic {
-    return _scene
-  }
-
   def tick(camera dynamic) {
     _terrain.tick(camera)
   }
-}
-
-namespace World {
-  const CLEAR_COLOR = THREE.Color.new(0x7FBFFF)
 }

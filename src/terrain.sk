@@ -22,7 +22,7 @@ class Terrain {
     var uniforms = THREE.UniformsUtils.merge([
       THREE.UniformsLib.common,
       THREE.UniformsLib.lights,
-      {"clearColor": {"type": "c", "value": World.CLEAR_COLOR}},
+      {"clearColor": {"type": "c", "value": world.clearColor}},
       {"drawDistance": {"type": "f", "value": 0}},
     ])
     uniforms.map.value = _texture
