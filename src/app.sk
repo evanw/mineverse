@@ -9,6 +9,7 @@ class App {
     _world = World.new(_scene)
     _camera.position.y = 50
     _camera.rotation.order = "YXZ"
+    _renderer.setClearColor(World.CLEAR_COLOR)
   }
 
   def element dynamic {

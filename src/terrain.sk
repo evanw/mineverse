@@ -446,57 +446,97 @@ namespace Chunk {
 }
 
 class Terrain {
+  const _world World
+  const _texture dynamic
+  const _material dynamic
   const _chunkList List<Chunk> = []
   const _chunkMap IntMap<Chunk> = {}
   const _group = THREE.Group.new()
-  var _texture dynamic = null
-  var _material dynamic = null
+  const _light = THREE.DirectionalLight.new(0xFFFFFF, 1)
+  const _drawDistance = 64
 
-  def new(scene dynamic) {
+  def new(world World) {
+    _world = world
     _texture = THREE.TextureLoader.new().load("terrain.png")
     _texture.minFilter = _texture.magFilter = THREE.NearestFilter
 
+    # Fix "map": true being ignored in the THREE.ShaderMaterial constructor
+    THREE.ShaderMaterial.prototype.map = true
+
+    var uniforms = THREE.UniformsUtils.merge([
+      THREE.UniformsLib.common,
+      THREE.UniformsLib.lights,
+      {"clearColor": {"type": "c", "value": World.CLEAR_COLOR}},
+      {"drawDistance": {"type": "f", "value": 0}},
+    ])
+    uniforms.map.value = _texture
+
     _material = THREE.ShaderMaterial.new({
-      "uniforms": {
-        "texture": {
-          "type": "t",
-          "value": _texture,
-        },
-      },
+      "uniforms": uniforms,
       "vertexShader": "
         attribute vec3 metadata;
+        varying vec3 position_;
         varying vec3 metadata_;
+
         void main() {
+          vec4 cameraSpacePosition = modelViewMatrix * vec4(position, 1.0);
+          position_ = cameraSpacePosition.xyz;
           metadata_ = metadata;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * cameraSpacePosition;
         }
       ",
-      "fragmentShader": "
-        uniform sampler2D texture;
+      "fragmentShader": "\n".join([
+        THREE.ShaderChunk.map_pars_fragment,
+        THREE.ShaderChunk.lights_lambert_pars_vertex,
+        "
+        uniform vec3 clearColor;
+        uniform float drawDistance;
+        varying vec3 position_;
         varying vec3 metadata_;
+
         void main() {
-          gl_FragColor = texture2D(texture, metadata_.xy) * metadata_.z;
+          vec2 coord = metadata_.xy;
+          float occlusion = metadata_.z;
+          vec3 color = texture2D(map, coord).rgb;
+          vec3 normal = normalize(cross(dFdx(position_), dFdy(position_)));
+          float fade = max(0.0, 1.0 - length(position_) / drawDistance);
+
+          vec3 diffuse = vec3(0.0);
+          for (int i = 0; i < MAX_DIR_LIGHTS; i++) {
+            diffuse += directionalLightColor[i] * max(0.0, dot(normal, directionalLightDirection[i]));
+          }
+
+          gl_FragColor.rgb = mix(clearColor, color * sqrt(0.1 * occlusion + 0.9 * diffuse), fade * fade);
+          gl_FragColor.a = 1.0;
         }
-      "
+        ",
+      ]),
+      "derivatives": true,
+      "lights": true,
+      "map": true,
     })
 
-    scene.add(_group)
+    _light.position.set(1, 3, 2)
+    _light.position.normalize()
+
+    world.scene.add(_group)
+    world.scene.add(_light)
   }
 
   def update(x double, y double, z double) {
-    var radius = 64
-    var xmin = Math.floor((x - radius) / Chunk.SIZE_X) as int
-    var ymin = Math.floor((y - radius) / Chunk.SIZE_Y) as int
-    var zmin = Math.floor((z - radius) / Chunk.SIZE_Z) as int
-    var xmax = Math.ceil((x + radius) / Chunk.SIZE_X) as int
-    var ymax = Math.ceil((y + radius) / Chunk.SIZE_Y) as int
-    var zmax = Math.ceil((z + radius) / Chunk.SIZE_Z) as int
+    var maxCenterDistance = _drawDistance + Math.sqrt(Chunk.SIZE_X * Chunk.SIZE_X + Chunk.SIZE_Y * Chunk.SIZE_Y + Chunk.SIZE_Z * Chunk.SIZE_Z) / 2
+    var xmin = Math.floor((x - maxCenterDistance) / Chunk.SIZE_X) as int
+    var ymin = Math.floor((y - maxCenterDistance) / Chunk.SIZE_Y) as int
+    var zmin = Math.floor((z - maxCenterDistance) / Chunk.SIZE_Z) as int
+    var xmax = Math.ceil((x + maxCenterDistance) / Chunk.SIZE_X) as int
+    var ymax = Math.ceil((y + maxCenterDistance) / Chunk.SIZE_Y) as int
+    var zmax = Math.ceil((z + maxCenterDistance) / Chunk.SIZE_Z) as int
 
     # Remove old chunks
     var i = 0
     while i < _chunkList.count {
       var chunk = _chunkList[i]
-      if distance(x, y, z, chunk.startX + Chunk.SIZE_X * 0.5, chunk.startY + Chunk.SIZE_Y * 0.5, chunk.startZ + Chunk.SIZE_Z * 0.5) > radius {
+      if distance(x, y, z, chunk.startX + Chunk.SIZE_X * 0.5, chunk.startY + Chunk.SIZE_Y * 0.5, chunk.startZ + Chunk.SIZE_Z * 0.5) > maxCenterDistance {
         _chunkMap.remove(chunk.key)
         _chunkList.removeAt(i)
         chunk.destroy
@@ -515,7 +555,7 @@ class Terrain {
         for chunkZ in zmin..zmax {
           var startZ = chunkZ * Chunk.SIZE_Z
 
-          if distance(x, y, z, startX + Chunk.SIZE_X * 0.5, startY + Chunk.SIZE_Y * 0.5, startZ + Chunk.SIZE_Z * 0.5) > radius {
+          if distance(x, y, z, startX + Chunk.SIZE_X * 0.5, startY + Chunk.SIZE_Y * 0.5, startZ + Chunk.SIZE_Z * 0.5) > maxCenterDistance {
             continue
           }
 
@@ -552,6 +592,7 @@ class Terrain {
     for chunk in _chunkList {
       chunk.update
     }
+    _material.uniforms.drawDistance.value = _drawDistance
   }
 }
 

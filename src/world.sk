@@ -1,11 +1,21 @@
 class World {
-  var _terrain Terrain = null
+  const _scene dynamic
+  const _terrain Terrain
 
   def new(scene dynamic) {
-    _terrain = Terrain.new(scene)
+    _scene = scene
+    _terrain = Terrain.new(self)
+  }
+
+  def scene dynamic {
+    return _scene
   }
 
   def tick(eye dynamic) {
     _terrain.tick(eye)
   }
+}
+
+namespace World {
+  const CLEAR_COLOR = THREE.Color.new(0x7FBFFF)
 }
