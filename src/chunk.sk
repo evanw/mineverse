@@ -39,23 +39,32 @@ enum Face {
 }
 
 class Chunk {
+  const _terrain Terrain
   const _group dynamic
+  const _depthGroup dynamic
+  const _updateGroup dynamic
   const _material dynamic
   const _startX int
   const _startY int
   const _startZ int
   const _data = Uint8Array.new(SIZE_X * SIZE_Y * SIZE_Z)
   const _neighbors List<Chunk> = [null, null, null, null, null, null]
+  var _outerBox = THREE.Box2.new()
+  var _innerBox = THREE.Box2.new()
   var _vertices List<double> = null
-  var _metadata List<double> = null
+  var _uvs List<double> = null
+  var _updateUVs List<double> = null
+  var _updatePosition List<double> = null
   var _indices List<int> = null
+  var _quads List<int> = null
   var _geometry dynamic = null
   var _mesh dynamic = null
+  var _depthMesh dynamic = null
+  var _updateMesh dynamic = null
   var _isInvalid = false
 
   def destroy {
-    if _mesh != null { _group.remove(_mesh) }
-    if _geometry != null { _geometry.dispose() }
+    _destroyDerivedData
 
     # Unlink from neighbors
     for i in 0..6 {
@@ -66,6 +75,35 @@ class Chunk {
         neighbor._neighbors[opposite].invalidate
         neighbor._neighbors[opposite] = null
       }
+    }
+  }
+
+  def _destroyDerivedData {
+    if _mesh != null {
+      _group.remove(_mesh)
+      _mesh = null
+    }
+
+    if _depthMesh != null {
+      _depthGroup.remove(_depthMesh)
+      _depthMesh = null
+    }
+
+    if _updateMesh != null {
+      _updateGroup.remove(_updateMesh)
+      _updateMesh = null
+    }
+
+    if _geometry != null {
+      _geometry.dispose()
+      _geometry = null
+    }
+
+    if _quads != null {
+      for quad in _quads {
+        _terrain.lightmap.free(quad)
+      }
+      _quads = null
     }
   }
 
@@ -175,8 +213,12 @@ class Chunk {
       return
     }
 
+    _destroyDerivedData
+    _quads = []
     _vertices = []
-    _metadata = []
+    _uvs = []
+    _updateUVs = []
+    _updatePosition = []
     _indices = []
 
     # Generate geometry
@@ -189,34 +231,10 @@ class Chunk {
             var pos = getWithNeighbors(x, y, z)
 
             if neg == .EMPTY && pos != .EMPTY {
-              _adjacent[0] = getWithNeighbors(x - 1, y - 1, z - 1)
-              _adjacent[1] = getWithNeighbors(x - 1, y + 0, z - 1)
-              _adjacent[2] = getWithNeighbors(x - 1, y + 1, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x - 1, y - 1, z + 0)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x - 1, y + 1, z + 0)
-
-              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z + 1)
-              _adjacent[7] = getWithNeighbors(x - 1, y + 0, z + 1)
-              _adjacent[8] = getWithNeighbors(x - 1, y + 1, z + 1)
-
               _appendQuad(x, y + 1, z + 1, 0, 0, -1, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES])
             }
 
             else if neg != .EMPTY && pos == .EMPTY {
-              _adjacent[0] = getWithNeighbors(x, y - 1, z + 1)
-              _adjacent[1] = getWithNeighbors(x, y + 0, z + 1)
-              _adjacent[2] = getWithNeighbors(x, y + 1, z + 1)
-
-              _adjacent[3] = getWithNeighbors(x, y - 1, z + 0)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x, y + 1, z + 0)
-
-              _adjacent[6] = getWithNeighbors(x, y - 1, z - 1)
-              _adjacent[7] = getWithNeighbors(x, y + 0, z - 1)
-              _adjacent[8] = getWithNeighbors(x, y + 1, z - 1)
-
               _appendQuad(x, y + 1, z, 0, 0, 1, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES])
             }
           }
@@ -227,34 +245,10 @@ class Chunk {
             var pos = getWithNeighbors(x, y, z)
 
             if neg == .EMPTY && pos != .EMPTY {
-              _adjacent[0] = getWithNeighbors(x + 1, y - 1, z + 1)
-              _adjacent[1] = getWithNeighbors(x + 1, y - 1, z + 0)
-              _adjacent[2] = getWithNeighbors(x + 1, y - 1, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z + 1)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y - 1, z - 1)
-
-              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z + 1)
-              _adjacent[7] = getWithNeighbors(x - 1, y - 1, z + 0)
-              _adjacent[8] = getWithNeighbors(x - 1, y - 1, z - 1)
-
               _appendQuad(x, y, z, 1, 0, 0, 0, 0, 1, TEXTURE_INDEX[pos][Face.BOTTOM])
             }
 
             else if neg != .EMPTY && pos == .EMPTY {
-              _adjacent[0] = getWithNeighbors(x - 1, y, z + 1)
-              _adjacent[1] = getWithNeighbors(x - 1, y, z + 0)
-              _adjacent[2] = getWithNeighbors(x - 1, y, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y, z + 1)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y, z - 1)
-
-              _adjacent[6] = getWithNeighbors(x + 1, y, z + 1)
-              _adjacent[7] = getWithNeighbors(x + 1, y, z + 0)
-              _adjacent[8] = getWithNeighbors(x + 1, y, z - 1)
-
               _appendQuad(x + 1, y, z, -1, 0, 0, 0, 0, 1, TEXTURE_INDEX[neg][Face.TOP])
             }
           }
@@ -265,34 +259,10 @@ class Chunk {
             var pos = getWithNeighbors(x, y, z)
 
             if neg == .EMPTY && pos != .EMPTY {
-              _adjacent[0] = getWithNeighbors(x + 1, y - 1, z - 1)
-              _adjacent[1] = getWithNeighbors(x + 1, y + 0, z - 1)
-              _adjacent[2] = getWithNeighbors(x + 1, y + 1, z - 1)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z - 1)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y + 1, z - 1)
-
-              _adjacent[6] = getWithNeighbors(x - 1, y - 1, z - 1)
-              _adjacent[7] = getWithNeighbors(x - 1, y + 0, z - 1)
-              _adjacent[8] = getWithNeighbors(x - 1, y + 1, z - 1)
-
               _appendQuad(x, y + 1, z, 1, 0, 0, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES])
             }
 
             else if neg != .EMPTY && pos == .EMPTY {
-              _adjacent[0] = getWithNeighbors(x - 1, y - 1, z)
-              _adjacent[1] = getWithNeighbors(x - 1, y + 0, z)
-              _adjacent[2] = getWithNeighbors(x - 1, y + 1, z)
-
-              _adjacent[3] = getWithNeighbors(x + 0, y - 1, z)
-              _adjacent[4] = .EMPTY
-              _adjacent[5] = getWithNeighbors(x + 0, y + 1, z)
-
-              _adjacent[6] = getWithNeighbors(x + 1, y - 1, z)
-              _adjacent[7] = getWithNeighbors(x + 1, y + 0, z)
-              _adjacent[8] = getWithNeighbors(x + 1, y + 1, z)
-
               _appendQuad(x + 1, y + 1, z, -1, 0, 0, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES])
             }
           }
@@ -300,29 +270,37 @@ class Chunk {
       }
     }
 
-    # Remove the old mesh
-    if _mesh != null {
-      _group.remove(_mesh)
-    }
-
     # Upload the data to the GPU
     _geometry = THREE.BufferGeometry.new()
     _geometry.setIndex(THREE.BufferAttribute.new(Uint16Array.new(_indices), 1))
     _geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_vertices), 3))
-    _geometry.addAttribute("metadata", THREE.BufferAttribute.new(Float32Array.new(_metadata), 3))
+    _geometry.addAttribute("uvs", THREE.BufferAttribute.new(Float32Array.new(_uvs), 4))
+    _geometry.addAttribute("updateUV", THREE.BufferAttribute.new(Float32Array.new(_updateUVs), 2))
+    _geometry.addAttribute("updatePosition", THREE.BufferAttribute.new(Float32Array.new(_updatePosition), 3))
 
     # Add the new mesh
     _mesh = THREE.Mesh.new(_geometry, _material)
+    _depthMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.depthMaterial)
+    _updateMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.updateMaterial)
     _group.add(_mesh)
+    _depthGroup.add(_depthMesh)
+    _updateGroup.add(_updateMesh)
+    _updateMesh.frustumCulled = false
+
+    # Allow these to be garbage collected
+    _vertices = null
+    _uvs = null
+    _updateUVs = null
+    _updatePosition = null
+    _indices = null
 
     _isInvalid = false
   }
 
   def _appendQuad(x int, y int, z int, ax int, ay int, az int, bx int, by int, bz int, TEXTURE_INDEX int) {
-    var ao0 = _calcAO(_adjacent[5], _adjacent[7], _adjacent[8])
-    var ao1 = _calcAO(_adjacent[1], _adjacent[5], _adjacent[2])
-    var ao2 = _calcAO(_adjacent[1], _adjacent[3], _adjacent[0])
-    var ao3 = _calcAO(_adjacent[3], _adjacent[7], _adjacent[6])
+    var cx = x + ax * 0.5 + bx * 0.5
+    var cy = y + ay * 0.5 + by * 0.5
+    var cz = z + az * 0.5 + bz * 0.5
 
     var s0 = (1 + TEXTURE_INDEX % 16) / 16.0 - 0.0001
     var t0 = 1 - (TEXTURE_INDEX / 16) / 16.0 - 0.0001
@@ -330,26 +308,45 @@ class Chunk {
     var t1 = t0 - 1 / 16.0 + 0.0002
 
     var i = _vertices.count / 3
-    _indices.append(i)
-    _indices.append(i + 1)
-    _indices.append(i + 2)
-    _indices.append(i)
-    _indices.append(i + 2)
-    _indices.append(i + 3)
+    var indices = _indices
+    indices.append(i)
+    indices.append(i + 1)
+    indices.append(i + 2)
+    indices.append(i)
+    indices.append(i + 2)
+    indices.append(i + 3)
 
-    _appendVertex(x, y, z, s0, t0, ao0)
-    _appendVertex(x + ax, y + ay, z + az, s1, t0, ao1)
-    _appendVertex(x + ax + bx, y + ay + by, z + az + bz, s1, t1, ao2)
-    _appendVertex(x + bx, y + by, z + bz, s0, t1, ao3)
+    var index = _terrain.lightmap.allocate
+    var inner = _innerBox
+    var outer = _outerBox
+    _terrain.lightmap.innerQuadForIndex(index, inner)
+    _terrain.lightmap.outerQuadForIndex(index, outer)
+    _quads.append(index)
+
+    _appendVertex(x,           y,           z,           s0, t0, inner.min.x, inner.min.y, outer.min.x, outer.min.y, cx, cy, cz)
+    _appendVertex(x + ax,      y + ay,      z + az,      s1, t0, inner.max.x, inner.min.y, outer.max.x, outer.min.y, cx, cy, cz)
+    _appendVertex(x + ax + bx, y + ay + by, z + az + bz, s1, t1, inner.max.x, inner.max.y, outer.max.x, outer.max.y, cx, cy, cz)
+    _appendVertex(x +      bx, y +      by, z +      bz, s0, t1, inner.min.x, inner.max.y, outer.min.x, outer.max.y, cx, cy, cz)
   }
 
-  def _appendVertex(x double, y double, z double, s double, t double, ao double) {
+  def quadCount int {
+    return _quads != null ? _quads.count : 0
+  }
+
+  def _appendVertex(x int, y int, z int, s0 double, t0 double, s1 double, t1 double, s2 double, t2 double, cx double, cy double, cz double) {
+    var expansion = Lightmap.CELL_SIZE / (Lightmap.CELL_SIZE - 1.0)
     _vertices.append(x)
     _vertices.append(y)
     _vertices.append(z)
-    _metadata.append(s)
-    _metadata.append(t)
-    _metadata.append(ao)
+    _uvs.append(s0)
+    _uvs.append(t0)
+    _uvs.append(s1)
+    _uvs.append(t1)
+    _updateUVs.append(s2)
+    _updateUVs.append(t2)
+    _updatePosition.append(cx + (x - cx) * expansion)
+    _updatePosition.append(cy + (y - cy) * expansion)
+    _updatePosition.append(cz + (z - cz) * expansion)
   }
 
   def generate {
@@ -426,12 +423,6 @@ namespace Chunk {
   const SIZE_X = 1 << SHIFT_X
   const SIZE_Y = 1 << SHIFT_Y
   const SIZE_Z = 1 << SHIFT_Z
-
-  const _adjacent List<Cell> = [
-    .EMPTY, .EMPTY, .EMPTY,
-    .EMPTY, .EMPTY, .EMPTY,
-    .EMPTY, .EMPTY, .EMPTY,
-  ]
 
   const TEXTURE_INDEX = [
     [0, 0, 0], # EMPTY

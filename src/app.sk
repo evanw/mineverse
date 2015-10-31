@@ -9,9 +9,6 @@ class App {
   var _fps = 0.0
 
   def new {
-    # Fix "map": true being ignored in the THREE.ShaderMaterial constructor
-    THREE.ShaderMaterial.prototype.map = true
-
     _world = World.new(_scene)
     _screen = Screen.new(_world)
     _cameraAABB.center.y = 50
@@ -54,11 +51,18 @@ class App {
     _camera.updateMatrixWorld()
     _camera.matrixWorldInverse.getInverse(_camera.matrixWorld)
     _world.tick(seconds, _camera)
-    _renderer.render(_scene, _camera, _screen.renderTarget)
+    _world.terrain.lightmap.render(_renderer, _world.terrain, _world.light)
+
+    var target = _screen.renderTarget
+    _renderer.setViewport(0, 0, target.width, target.height)
+    _renderer.render(_scene, _camera, target)
     _screen.render(_renderer, _camera)
   }
 
   def title string {
-    return "FPS: " + Math.round(_fps).toString + ", cutoff: " + _world.terrain.drawDistance.toString
+    return
+      Math.round(_fps).toString + " fps" +
+      "/" + Math.round(_world.terrain.drawDistance).toString + " units" +
+      "/" + _world.terrain.quadCount.toString + " quads"
   }
 }

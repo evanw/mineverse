@@ -5,9 +5,14 @@ class Terrain {
   const _chunkList List<Chunk> = []
   const _chunkMap IntMap<Chunk> = {}
   const _group = THREE.Group.new()
+  const _depthGroup = THREE.Group.new()
+  const _updateGroup = THREE.Group.new()
   const _frustum = THREE.Frustum.new()
   const _box = THREE.Box3.new()
   const _matrix = THREE.Matrix4.new()
+  const _min = THREE.Vector3.new()
+  const _max = THREE.Vector3.new()
+  const _lightmap = Lightmap.new(1024, 1024)
   var _drawDistance = (MIN_DRAW_DISTANCE + MAX_DRAW_DISTANCE) / 2
   var _averageFPS = 60.0
 
@@ -18,61 +23,67 @@ class Terrain {
 
     var uniforms = THREE.UniformsUtils.merge([
       THREE.UniformsLib.common,
-      THREE.UniformsLib.lights,
+      {"map": {"type": "t", "value": null}},
+      {"lightmap": {"type": "t", "value": null}},
       {"clearColor": {"type": "c", "value": world.clearColor}},
       {"drawDistance": {"type": "f", "value": 0}},
+      {"randomSeed": {"type": "f", "value": 0}},
     ])
     uniforms.map.value = _texture
+    uniforms.lightmap.value = _lightmap.texture
 
     _material = THREE.ShaderMaterial.new({
       "uniforms": uniforms,
       "vertexShader": "
-        attribute vec3 metadata;
+        attribute vec4 uvs;
         varying vec3 position_;
-        varying vec3 metadata_;
+        varying vec4 uvs_;
 
         void main() {
           vec4 cameraSpacePosition = modelViewMatrix * vec4(position, 1.0);
           position_ = cameraSpacePosition.xyz;
-          metadata_ = metadata;
+          uvs_ = uvs;
           gl_Position = projectionMatrix * cameraSpacePosition;
         }
       ",
       "fragmentShader": "\n".join([
         THREE.ShaderChunk.common,
-        THREE.ShaderChunk.map_pars_fragment,
-        THREE.ShaderChunk.lights_lambert_pars_vertex,
         "
+        uniform sampler2D map;
+        uniform sampler2D lightmap;
+        uniform float randomSeed;
         uniform vec3 clearColor;
         uniform float drawDistance;
         varying vec3 position_;
-        varying vec3 metadata_;
+        varying vec4 uvs_;
 
         void main() {
-          vec2 coord = metadata_.xy;
-          float occlusion = metadata_.z;
-          vec3 color = inputToLinear(texture2D(map, coord).rgb);
+          vec4 sample = texture2D(lightmap, uvs_.zw);
+          float occlusion = 1.0 -
+            dot(sample.rg, vec2(1.0, 1.0 / 256.0)) /
+            dot(sample.ba, vec2(1.0, 1.0 / 256.0));
+          vec3 color = inputToLinear(texture2D(map, uvs_.xy).rgb) * occlusion;
           vec3 normal = normalize(cross(dFdx(position_), dFdy(position_)));
           float fade = max(0.0, 1.0 - length(position_) / drawDistance);
-
-          vec3 diffuse = vec3(0.0);
-          for (int i = 0; i < MAX_DIR_LIGHTS; i++) {
-            diffuse += directionalLightColor[i] * max(0.0, dot(normal, directionalLightDirection[i]));
-          }
-
-          color *= 0.1 * occlusion + 0.9 * diffuse;
-          color = mix(inputToLinear(clearColor), color, fade * fade);
+          color = mix(inputToLinear(clearColor), color, 1.0 - exp(fade * fade * -5.541263545158676));
           color = linearToOutput(color);
+          float random = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
+          color += (random - 0.5) / 255.0;
           gl_FragColor = vec4(color, 1.0);
         }
         ",
       ]),
       "derivatives": true,
-      "lights": true,
-      "map": true,
     })
 
     world.scene.add(_group)
+    lightmap.depthScene.add(_depthGroup)
+    lightmap.updateScene.add(_updateGroup)
+    _updateGroup.frustumCulled = false
+  }
+
+  def chunks List<Chunk> {
+    return _chunkList
   }
 
   def _update(camera dynamic) {
@@ -124,7 +135,7 @@ class Terrain {
           var chunk = _chunkMap.get(key, null)
 
           if chunk == null {
-            chunk = Chunk.new(_group, _material, startX, startY, startZ)
+            chunk = Chunk.new(self, _group, _depthGroup, _updateGroup, _material, startX, startY, startZ)
             chunk.generate
             _chunkMap[key] = chunk
             _chunkList.append(chunk)
@@ -164,8 +175,20 @@ class Terrain {
     }
   }
 
+  def lightmap Lightmap {
+    return _lightmap
+  }
+
   def drawDistance double {
     return _drawDistance
+  }
+
+  def quadCount int {
+    var total = 0
+    for chunk in _chunkList {
+      total += chunk.quadCount
+    }
+    return total
   }
 
   def tick(seconds double, camera dynamic) {
@@ -175,6 +198,7 @@ class Terrain {
 
     _update(camera)
     _material.uniforms.drawDistance.value = _drawDistance
+    _material.uniforms.randomSeed.value = Math.random
   }
 
   def get(x int, y int, z int) Cell {
@@ -207,9 +231,6 @@ class Terrain {
     _moveAlongAxis(aabb, 1, delta.y)
     _moveAlongAxis(aabb, 2, delta.z)
   }
-
-  const _min = THREE.Vector3.new()
-  const _max = THREE.Vector3.new()
 
   def _moveAlongAxis(aabb AABB, axis int, delta double) {
     const EPSILON = 0.0001

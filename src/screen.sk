@@ -1,5 +1,5 @@
 class Screen {
-  const _world dynamic
+  const _world World
   const _material dynamic
   const _vector4 = THREE.Vector4.new()
   const _vector3 = THREE.Vector3.new()
@@ -17,6 +17,7 @@ class Screen {
 
     var uniforms = THREE.UniformsUtils.merge([
       THREE.UniformsLib.common,
+      {"map": {"type": "t", "value": null}},
       {"cameraToWorldMatrix": {"type": "m4", "value": THREE.Matrix4.new()}},
       {"clearColor": {"type": "c", "value": world.clearColor}},
       {"uvLight": {"type": "v3", "value": THREE.Vector3.new()}},
@@ -25,6 +26,7 @@ class Screen {
       {"godrayStrength": {"type": "f", "value": 0}},
     ])
     uniforms.map.value = renderTarget
+    renderTarget.texture.generateMipmaps = false
 
     _material = THREE.ShaderMaterial.new({
       "uniforms": uniforms,
@@ -32,12 +34,13 @@ class Screen {
         THREE.ShaderChunk.uv_pars_vertex,
         "
         uniform mat4 cameraToWorldMatrix;
-        varying vec3 vRay;
+        varying vec3 ray_;
+        varying vec2 uv_;
 
         void main() {
           vec4 projected = cameraToWorldMatrix * vec4(position.xy, 1.0, 1.0);
-          vUv = uv;
-          vRay = projected.xyz / projected.w;
+          uv_ = uv;
+          ray_ = projected.xyz / projected.w;
           gl_Position = vec4(position, 1.0);
         }
         ",
@@ -46,12 +49,14 @@ class Screen {
         THREE.ShaderChunk.uv_pars_fragment,
         THREE.ShaderChunk.map_pars_fragment,
         "
+        uniform sampler2D map;
         uniform float randomSeed;
         uniform vec3 clearColor;
         uniform vec3 rayLight;
         uniform vec3 uvLight;
         uniform float godrayStrength;
-        varying vec3 vRay;
+        varying vec3 ray_;
+        varying vec2 uv_;
 
         float lightMagnitude(vec3 ray) {
           float falloff = max(0.0, dot(rayLight, normalize(ray)));
@@ -63,18 +68,18 @@ class Screen {
             return 0.0;
           }
 
-          float randomOffset = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
-          vec3 deltaRayX = dFdx(vRay) / dFdx(vUv).x;
-          vec3 deltaRayY = dFdy(vRay) / dFdy(vUv).y;
-          const int count = 16;
+          float random = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 deltaRayX = dFdx(ray_) / dFdx(uv_).x;
+          vec3 deltaRayY = dFdy(ray_) / dFdy(uv_).y;
+          const int count = 12;
           float alpha = 0.0;
 
           for (int i = 0; i < count; i++) {
-            float t = (float(i) + randomOffset) / float(count);
-            vec2 uv = mix(vUv, uvLight.xy, t * 0.5);
-            vec3 ray = vRay +
-              deltaRayX * (uv.x - vUv.x) +
-              deltaRayY * (uv.y - vUv.y);
+            float t = (float(i) + random) / float(count);
+            vec2 uv = mix(uv_, uvLight.xy, t * 0.5);
+            vec3 ray = ray_ +
+              deltaRayX * (uv.x - uv_.x) +
+              deltaRayY * (uv.y - uv_.y);
             float magnitude = lightMagnitude(ray);
 
             if (magnitude != 0.0) {
@@ -91,8 +96,8 @@ class Screen {
         }
 
         void main() {
-          vec4 color = texture2D(map, vUv);
-          vec3 backgroundColor = mix(clearColor, vec3(1.0), lightMagnitude(vRay));
+          vec4 color = texture2D(map, uv_);
+          vec3 backgroundColor = mix(clearColor, vec3(1.0), lightMagnitude(ray_));
           color.rgb = mix(backgroundColor, color.rgb, color.a);
           color.rgb += godray();
           gl_FragColor = color;
@@ -100,7 +105,6 @@ class Screen {
         ",
       ]),
       "derivatives": true,
-      "map": true,
     })
     _scene.add(THREE.Mesh.new(THREE.PlaneGeometry.new(2, 2, 1, 1), _material))
   }
