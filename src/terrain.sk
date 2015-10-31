@@ -8,7 +8,7 @@ class Terrain {
   const _frustum = THREE.Frustum.new()
   const _box = THREE.Box3.new()
   const _matrix = THREE.Matrix4.new()
-  const _drawDistance = 64
+  const _drawDistance = 128
 
   def new(world World) {
     _world = world
@@ -79,11 +79,14 @@ class Terrain {
 
     var maxCenterDistance = _drawDistance + Math.sqrt(Chunk.SIZE_X * Chunk.SIZE_X + Chunk.SIZE_Y * Chunk.SIZE_Y + Chunk.SIZE_Z * Chunk.SIZE_Z) / 2
     var eye = camera.position
+
     var xmin = Math.floor((eye.x - maxCenterDistance) / Chunk.SIZE_X) as int
-    var ymin = Math.floor((eye.y - maxCenterDistance) / Chunk.SIZE_Y) as int
-    var zmin = Math.floor((eye.z - maxCenterDistance) / Chunk.SIZE_Z) as int
     var xmax = Math.ceil((eye.x + maxCenterDistance) / Chunk.SIZE_X) as int
-    var ymax = Math.ceil((eye.y + maxCenterDistance) / Chunk.SIZE_Y) as int
+
+    var ymin = Math.max(0, Math.floor((eye.y - maxCenterDistance) / Chunk.SIZE_Y) as int)
+    var ymax = Math.min(2, Math.ceil((eye.y + maxCenterDistance) / Chunk.SIZE_Y) as int)
+
+    var zmin = Math.floor((eye.z - maxCenterDistance) / Chunk.SIZE_Z) as int
     var zmax = Math.ceil((eye.z + maxCenterDistance) / Chunk.SIZE_Z) as int
 
     # Remove old chunks
