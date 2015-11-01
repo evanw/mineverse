@@ -16,7 +16,7 @@ class Lightmap {
   const _axisY = THREE.Vector3.new()
   const _axisZ = THREE.Vector3.new()
   const _camera = THREE.OrthographicCamera.new(0, 1, 0, 1, 0, 1)
-  var _clearVertices List<double> = []
+  const _clearVertices = FloatArray.new
   var _textureA dynamic
   var _textureB dynamic
   var _count = 0
@@ -179,17 +179,9 @@ class Lightmap {
   }
 
   def _appendClearTriangle(ax double, ay double, bx double, by double, cx double, cy double) {
-    _clearVertices.append(ax * 2 - 1)
-    _clearVertices.append(ay * 2 - 1)
-    _clearVertices.append(0)
-
-    _clearVertices.append(bx * 2 - 1)
-    _clearVertices.append(by * 2 - 1)
-    _clearVertices.append(0)
-
-    _clearVertices.append(cx * 2 - 1)
-    _clearVertices.append(cy * 2 - 1)
-    _clearVertices.append(0)
+    _clearVertices.append(ax * 2 - 1, ay * 2 - 1, 0)
+    _clearVertices.append(bx * 2 - 1, by * 2 - 1, 0)
+    _clearVertices.append(cx * 2 - 1, cy * 2 - 1, 0)
   }
 
   def free(index int) {
@@ -278,13 +270,13 @@ class Lightmap {
 
       if !_clearVertices.isEmpty {
         var geometry = THREE.BufferGeometry.new()
-        geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_clearVertices), 3))
+        geometry.addAttribute("position", THREE.Float32Attribute(_clearVertices.data, 3))
         var clearMesh = THREE.Mesh.new(geometry, _clearMaterial)
         clearMesh.frustumCulled = false
         _clearScene.add(clearMesh)
         renderer.render(_clearScene, _camera, _textureA)
         _clearScene.remove(clearMesh)
-        _clearVertices = []
+        _clearVertices.clear
       }
 
       updateMaterial.uniforms.rayLight.value.copy(_axisZ)

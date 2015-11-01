@@ -1,0 +1,165 @@
+class IntArray {
+  var _data = Int32Array.new(256)
+  var _count = 0
+  var _capacity = 256
+
+  def clear {
+    _count = 0
+  }
+
+  def isEmpty bool {
+    return _count == 0
+  }
+
+  def count int {
+    return _count
+  }
+
+  def [](index int) int {
+    assert(index >= 0 && index < _count)
+    return _data[index]
+  }
+
+  def []=(index int, value int) {
+    assert(index >= 0 && index < _count)
+    _data[index] = value
+  }
+
+  def data Int32Array {
+    return _data.subarray(0, _count)
+  }
+
+  def append(value int) {
+    if _count + 1 > _capacity {
+      _grow
+    }
+
+    _data[_count] = value
+    _count++
+  }
+
+  def append(a int, b int) {
+    if _count + 2 > _capacity {
+      _grow
+    }
+
+    _data[_count] = a
+    _data[_count + 1] = b
+    _count += 2
+  }
+
+  def append(a int, b int, c int) {
+    if _count + 3 > _capacity {
+      _grow
+    }
+
+    _data[_count] = a
+    _data[_count + 1] = b
+    _data[_count + 2] = c
+    _count += 3
+  }
+
+  def append(a int, b int, c int, d int) {
+    if _count + 4 > _capacity {
+      _grow
+    }
+
+    _data[_count] = a
+    _data[_count + 1] = b
+    _data[_count + 2] = c
+    _data[_count + 3] = d
+    _count += 4
+  }
+
+  def _grow {
+    _capacity *= 2
+    var data = Int32Array.new(_capacity)
+    if _data != null {
+      data.set(_data)
+    }
+    _data = data
+  }
+}
+
+class FloatArray {
+  var _data = Float32Array.new(256)
+  var _count = 0
+  var _capacity = 256
+
+  def clear {
+    _count = 0
+  }
+
+  def isEmpty bool {
+    return _count == 0
+  }
+
+  def count int {
+    return _count
+  }
+
+  def [](index int) double {
+    assert(index >= 0 && index < _count)
+    return _data[index]
+  }
+
+  def []=(index int, value double) {
+    assert(index >= 0 && index < _count)
+    _data[index] = value
+  }
+
+  def data Float32Array {
+    return _data.subarray(0, _count)
+  }
+
+  def append(value double) {
+    if _count + 1 > _capacity {
+      _grow
+    }
+
+    _data[_count] = value
+    _count++
+  }
+
+  def append(a double, b double) {
+    if _count + 2 > _capacity {
+      _grow
+    }
+
+    _data[_count] = a
+    _data[_count + 1] = b
+    _count += 2
+  }
+
+  def append(a double, b double, c double) {
+    if _count + 3 > _capacity {
+      _grow
+    }
+
+    _data[_count] = a
+    _data[_count + 1] = b
+    _data[_count + 2] = c
+    _count += 3
+  }
+
+  def append(a double, b double, c double, d double) {
+    if _count + 4 > _capacity {
+      _grow
+    }
+
+    _data[_count] = a
+    _data[_count + 1] = b
+    _data[_count + 2] = c
+    _data[_count + 3] = d
+    _count += 4
+  }
+
+  def _grow {
+    _capacity *= 2
+    var data = Float32Array.new(_capacity)
+    if _data != null {
+      data.set(_data)
+    }
+    _data = data
+  }
+}

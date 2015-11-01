@@ -49,14 +49,14 @@ class Chunk {
   const _startZ int
   const _data = Uint8Array.new(SIZE_X * SIZE_Y * SIZE_Z)
   const _neighbors List<Chunk> = [null, null, null, null, null, null]
+  const _vertices = FloatArray.new
+  const _uvs = FloatArray.new
+  const _updateUVs = FloatArray.new
+  const _updatePosition = FloatArray.new
+  const _indices = IntArray.new
+  const _quads = IntArray.new
   var _outerBox = THREE.Box2.new()
   var _innerBox = THREE.Box2.new()
-  var _vertices List<double> = null
-  var _uvs List<double> = null
-  var _updateUVs List<double> = null
-  var _updatePosition List<double> = null
-  var _indices List<int> = null
-  var _quads List<int> = null
   var _quadIndices IntMap<int> = null
   var _quadPreviousIndices IntMap<int> = {}
   var _geometry dynamic = null
@@ -80,14 +80,15 @@ class Chunk {
     }
 
     # Free all quads
-    if _quads != null {
-      for quad in _quads {
-        _terrain.lightmap.free(quad)
+    if !_quads.isEmpty {
+      for i in 0.._quads.count {
+        _terrain.lightmap.free(_quads[i])
       }
-      _quads = null
-      _quadIndices = null
-      _quadPreviousIndices = {}
+      _quads.clear
     }
+
+    _quadIndices = null
+    _quadPreviousIndices = {}
   }
 
   def _destroyMeshesAndGeometry {
@@ -174,25 +175,14 @@ class Chunk {
   }
 
   def get(x int, y int, z int) Cell {
-    if contains(x, y, z) {
-      return _data[(x - _startX) + ((y - _startY) + (z - _startZ) * SIZE_Y) * SIZE_X] as Cell
-    }
-    return .EMPTY
+    return contains(x, y, z) ? _getRelative(x - _startX, y - _startY, z - _startZ) : .EMPTY
   }
 
-  def getWithNeighbors(x int, y int, z int) Cell {
-    var chunk = self
-
-    if x < chunk._startX && chunk.neighbor(.XNEG) != null { chunk = chunk.neighbor(.XNEG) }
-    else if x >= chunk._startX + SIZE_X && chunk.neighbor(.XPOS) != null { chunk = chunk.neighbor(.XPOS) }
-
-    if y < chunk._startY && chunk.neighbor(.YNEG) != null { chunk = chunk.neighbor(.YNEG) }
-    else if y >= chunk._startY + SIZE_Y && chunk.neighbor(.YPOS) != null { chunk = chunk.neighbor(.YPOS) }
-
-    if z < chunk._startZ && chunk.neighbor(.ZNEG) != null { chunk = chunk.neighbor(.ZNEG) }
-    else if z >= chunk._startZ + SIZE_Z && chunk.neighbor(.ZPOS) != null { chunk = chunk.neighbor(.ZPOS) }
-
-    return chunk.get(x, y, z)
+  def _getRelative(x int, y int, z int) Cell {
+    assert(x >= 0 && x < SIZE_X)
+    assert(y >= 0 && y < SIZE_Y)
+    assert(z >= 0 && z < SIZE_Z)
+    return _data[x + (y + z * SIZE_Y) * SIZE_X] as Cell
   }
 
   def set(x int, y int, z int, cell Cell) {
@@ -219,13 +209,8 @@ class Chunk {
     }
 
     _destroyMeshesAndGeometry
-    _quads = []
+    _quads.clear
     _quadIndices = {}
-    _vertices = []
-    _uvs = []
-    _updateUVs = []
-    _updatePosition = []
-    _indices = []
 
     _generateGeometry
 
@@ -238,11 +223,11 @@ class Chunk {
 
     # Upload the data to the GPU
     _geometry = THREE.BufferGeometry.new()
-    _geometry.setIndex(THREE.BufferAttribute.new(Uint16Array.new(_indices), 1))
-    _geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_vertices), 3))
-    _geometry.addAttribute("uvs", THREE.BufferAttribute.new(Float32Array.new(_uvs), 4))
-    _geometry.addAttribute("updateUV", THREE.BufferAttribute.new(Float32Array.new(_updateUVs), 2))
-    _geometry.addAttribute("updatePosition", THREE.BufferAttribute.new(Float32Array.new(_updatePosition), 3))
+    _geometry.setIndex(THREE.Uint16Attribute(_indices.data, 1))
+    _geometry.addAttribute("position", THREE.Float32Attribute(_vertices.data, 3))
+    _geometry.addAttribute("uvs", THREE.Float32Attribute(_uvs.data, 4))
+    _geometry.addAttribute("updateUV", THREE.Float32Attribute(_updateUVs.data, 2))
+    _geometry.addAttribute("updatePosition", THREE.Float32Attribute(_updatePosition.data, 3))
 
     # Add the new mesh
     _mesh = THREE.Mesh.new(_geometry, _material)
@@ -253,63 +238,126 @@ class Chunk {
     _updateGroup.add(_updateMesh)
     _updateMesh.frustumCulled = false
 
-    # Allow these to be garbage collected
-    _vertices = null
-    _uvs = null
-    _updateUVs = null
-    _updatePosition = null
-    _indices = null
+    # Reset state
+    _vertices.clear
+    _uvs.clear
+    _updateUVs.clear
+    _updatePosition.clear
+    _indices.clear
 
     _isInvalid = false
   }
 
   def _generateGeometry {
-    for x in _startX.._startX + SIZE_X + 1 {
-      for y in _startY.._startY + SIZE_Y + 1 {
-        for z in _startZ.._startZ + SIZE_Z + 1 {
-          var quadBaseIndex = (x + (y + z * (SIZE_Y + 1)) * (SIZE_X + 1)) * 6
+    var textureIndex = TEXTURE_INDEX
+    var quadBaseIndex = 0
+    var startX = _startX
+    var startY = _startY
+    var startZ = _startZ
 
+    for z in 0..SIZE_Z + 1 {
+      for y in 0..SIZE_Y + 1 {
+        for x in 0..SIZE_X + 1 {
           # Draw quads on the x axis
-          if y < _startY + SIZE_Y && z < _startZ + SIZE_Z {
-            var neg = getWithNeighbors(x - 1, y, z)
-            var pos = getWithNeighbors(x, y, z)
+          if y < SIZE_Y && z < SIZE_Z {
+            var neg = Cell.EMPTY
+            var pos = Cell.EMPTY
 
-            if neg == .EMPTY && pos != .EMPTY {
-              _appendQuad(x, y + 1, z + 1, 0, 0, -1, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES], quadBaseIndex)
+            # -x
+            if x > 0 {
+              neg = _getRelative(x - 1, y, z)
+            } else {
+              var xneg = neighbor(.XNEG)
+              if xneg != null {
+                neg = xneg._getRelative(SIZE_X - 1, y, z)
+              }
             }
 
-            else if neg != .EMPTY && pos == .EMPTY {
-              _appendQuad(x, y + 1, z, 0, 0, 1, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES], quadBaseIndex + 1)
+            # +x
+            if x < SIZE_X {
+              pos = _getRelative(x, y, z)
+            } else {
+              var xpos = neighbor(.XPOS)
+              if xpos != null {
+                pos = xpos._getRelative(0, y, z)
+              }
+            }
+
+            # Quad
+            if neg == .EMPTY && pos != .EMPTY {
+              _appendQuad(startX + x, startY + y + 1, startZ + z + 1, 0, 0, -1, 0, -1, 0, textureIndex[pos * 3 + Face.SIDES], quadBaseIndex)
+            } else if neg != .EMPTY && pos == .EMPTY {
+              _appendQuad(startX + x, startY + y + 1, startZ + z, 0, 0, 1, 0, -1, 0, textureIndex[neg * 3 + Face.SIDES], quadBaseIndex + 1)
             }
           }
 
           # Draw quads on the y axis
-          if x < _startX + SIZE_X && z < _startZ + SIZE_Z {
-            var neg = getWithNeighbors(x, y - 1, z)
-            var pos = getWithNeighbors(x, y, z)
+          if x < SIZE_X && z < SIZE_Z {
+            var neg = Cell.EMPTY
+            var pos = Cell.EMPTY
 
-            if neg == .EMPTY && pos != .EMPTY {
-              _appendQuad(x, y, z, 1, 0, 0, 0, 0, 1, TEXTURE_INDEX[pos][Face.BOTTOM], quadBaseIndex + 2)
+            # -y
+            if y > 0 {
+              neg = _getRelative(x, y - 1, z)
+            } else {
+              var yneg = neighbor(.YNEG)
+              if yneg != null {
+                neg = yneg._getRelative(x, SIZE_Y - 1, z)
+              }
             }
 
-            else if neg != .EMPTY && pos == .EMPTY {
-              _appendQuad(x + 1, y, z, -1, 0, 0, 0, 0, 1, TEXTURE_INDEX[neg][Face.TOP], quadBaseIndex + 3)
+            # +y
+            if y < SIZE_Y {
+              pos = _getRelative(x, y, z)
+            } else {
+              var ypos = neighbor(.YPOS)
+              if ypos != null {
+                pos = ypos._getRelative(x, 0, z)
+              }
+            }
+
+            # Quad
+            if neg == .EMPTY && pos != .EMPTY {
+              _appendQuad(startX + x, startY + y, startZ + z, 1, 0, 0, 0, 0, 1, textureIndex[pos * 3 + Face.BOTTOM], quadBaseIndex + 2)
+            } else if neg != .EMPTY && pos == .EMPTY {
+              _appendQuad(startX + x + 1, startY + y, startZ + z, -1, 0, 0, 0, 0, 1, textureIndex[neg * 3 + Face.TOP], quadBaseIndex + 3)
             }
           }
 
           # Draw quads on the z axis
-          if x < _startX + SIZE_X && y < _startY + SIZE_Y {
-            var neg = getWithNeighbors(x, y, z - 1)
-            var pos = getWithNeighbors(x, y, z)
+          if x < SIZE_X && y < SIZE_Y {
+            var neg = Cell.EMPTY
+            var pos = Cell.EMPTY
 
-            if neg == .EMPTY && pos != .EMPTY {
-              _appendQuad(x, y + 1, z, 1, 0, 0, 0, -1, 0, TEXTURE_INDEX[pos][Face.SIDES], quadBaseIndex + 4)
+            # -z
+            if z > 0 {
+              neg = _getRelative(x, y, z - 1)
+            } else {
+              var zneg = neighbor(.ZNEG)
+              if zneg != null {
+                neg = zneg._getRelative(x, y, SIZE_Z - 1)
+              }
             }
 
-            else if neg != .EMPTY && pos == .EMPTY {
-              _appendQuad(x + 1, y + 1, z, -1, 0, 0, 0, -1, 0, TEXTURE_INDEX[neg][Face.SIDES], quadBaseIndex + 5)
+            # +z
+            if z < SIZE_Z {
+              pos = _getRelative(x, y, z)
+            } else {
+              var zpos = neighbor(.ZPOS)
+              if zpos != null {
+                pos = zpos._getRelative(x, y, 0)
+              }
+            }
+
+            # Quad
+            if neg == .EMPTY && pos != .EMPTY {
+              _appendQuad(startX + x, startY + y + 1, startZ + z, 1, 0, 0, 0, -1, 0, textureIndex[pos * 3 + Face.SIDES], quadBaseIndex + 4)
+            } else if neg != .EMPTY && pos == .EMPTY {
+              _appendQuad(startX + x + 1, startY + y + 1, startZ + z, -1, 0, 0, 0, -1, 0, textureIndex[neg * 3 + Face.SIDES], quadBaseIndex + 5)
             }
           }
+
+          quadBaseIndex += 6
         }
       }
     }
@@ -326,13 +374,8 @@ class Chunk {
     var t1 = t0 - 1 / 16.0 + 0.0002
 
     var i = _vertices.count / 3
-    var indices = _indices
-    indices.append(i)
-    indices.append(i + 1)
-    indices.append(i + 2)
-    indices.append(i)
-    indices.append(i + 2)
-    indices.append(i + 3)
+    _indices.append(i, i + 1, i + 2)
+    _indices.append(i, i + 2, i + 3)
 
     # Reuse existing lightmap data if this isn't a new quad
     var index = _quadPreviousIndices.get(quadIndex, -1)
@@ -360,22 +403,10 @@ class Chunk {
 
   def _appendVertex(x int, y int, z int, s0 double, t0 double, s1 double, t1 double, s2 double, t2 double, cx double, cy double, cz double) {
     var expansion = Lightmap.CELL_SIZE / (Lightmap.CELL_SIZE - 1.0)
-
-    _vertices.append(x)
-    _vertices.append(y)
-    _vertices.append(z)
-
-    _uvs.append(s0)
-    _uvs.append(t0)
-    _uvs.append(s1)
-    _uvs.append(t1)
-
-    _updateUVs.append(s2)
-    _updateUVs.append(t2)
-
-    _updatePosition.append(cx + (x - cx) * expansion)
-    _updatePosition.append(cy + (y - cy) * expansion)
-    _updatePosition.append(cz + (z - cz) * expansion)
+    _vertices.append(x, y, z)
+    _uvs.append(s0, t0, s1, t1)
+    _updateUVs.append(s2, t2)
+    _updatePosition.append(cx + (x - cx) * expansion, cy + (y - cy) * expansion, cz + (z - cz) * expansion)
   }
 
   def generate {
@@ -453,14 +484,14 @@ namespace Chunk {
   const SIZE_Y = 1 << SHIFT_Y
   const SIZE_Z = 1 << SHIFT_Z
 
-  const TEXTURE_INDEX = [
-    [0, 0, 0], # EMPTY
-    [2, 2, 2], # DIRT
-    [0, 2, 3], # GRASS
-    [1, 1, 1], # STONE
-    [66, 2, 68], # SNOW
-    [6, 6, 5], # METAL
-  ]
+  const TEXTURE_INDEX = Uint8Array.new([
+    0, 0, 0, # EMPTY
+    2, 2, 2, # DIRT
+    0, 2, 3, # GRASS
+    1, 1, 1, # STONE
+    66, 2, 68, # SNOW
+    6, 6, 5, # METAL
+  ])
 
   def _calcAO(side1 Cell, side2 Cell, corner Cell) double {
     if side1 != .EMPTY && side2 != .EMPTY { return 0.2 }
