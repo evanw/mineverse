@@ -50,7 +50,10 @@ def main {
     oldMouse = e
   }
   var resize = => {
-    app.resize(window.innerWidth, window.innerHeight)
+    var ratio = window.devicePixelRatio
+    app.resize(
+      Math.round(window.innerWidth * ratio) as int,
+      Math.round(window.innerHeight * ratio) as int)
   }
   var count = 0
   tick = => {

@@ -38,7 +38,7 @@ class App {
   def resize(width int, height int) {
     _camera.setViewOffset(width, height, 0, 0, width, height)
     _camera.updateProjectionMatrix()
-    _renderer.setSize(width, height)
+    _renderer.setSize(width, height, false)
     _screen.resize(width, height)
   }
 
