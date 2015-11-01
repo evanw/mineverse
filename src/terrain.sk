@@ -271,7 +271,7 @@ class Terrain {
 }
 
 namespace Terrain {
-  const TARGET_FPS = 28
+  const TARGET_FPS = 25
   const MIN_DRAW_DISTANCE = 64.0
   const MAX_DRAW_DISTANCE = 128.0
 
