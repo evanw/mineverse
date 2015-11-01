@@ -76,6 +76,7 @@ class Terrain {
             occlusion = 1.0 -
               dot(sample.rg, vec2(1.0, 1.0 / 256.0)) /
               dot(sample.ba, vec2(1.0, 1.0 / 256.0));
+            occlusion = 0.01 + 0.99 * occlusion;
           } else {
             vec3 normal = normalize(cross(dFdx(worldSpacePosition), dFdy(worldSpacePosition)));
             occlusion = 0.1 + 0.9 * max(0.0, dot(rayLight, normal));

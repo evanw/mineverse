@@ -29,14 +29,14 @@ class Lightmap {
     _textureA = THREE.WebGLRenderTarget.new(width * CELL_SIZE, height * CELL_SIZE, {
       "minFilter": THREE.LinearFilter,
       "magFilter": THREE.LinearFilter,
-      "format": THREE.RGBFormat,
+      "format": THREE.RGBAFormat,
     })
     _textureA.texture.generateMipmaps = false
 
     _textureB = THREE.WebGLRenderTarget.new(width * CELL_SIZE, height * CELL_SIZE, {
       "minFilter": THREE.LinearFilter,
       "magFilter": THREE.LinearFilter,
-      "format": THREE.RGBFormat,
+      "format": THREE.RGBAFormat,
     })
     _textureB.texture.generateMipmaps = false
 
@@ -78,7 +78,6 @@ class Lightmap {
       {"map": {"type": "t", "value": null}},
       {"previous": {"type": "t", "value": null}},
       {"rayLight": {"type": "v3", "value": THREE.Vector3.new()}},
-      {"accumulationFactor": {"type": "f", "value": 1.0 / 64}},
     ])
     uniforms.map.value = _depthTexture
 
@@ -101,7 +100,6 @@ class Lightmap {
       "fragmentShader": "
         uniform sampler2D map;
         uniform sampler2D previous;
-        uniform float accumulationFactor;
         uniform vec3 rayLight;
         varying vec3 worldPosition;
         varying vec4 clipPosition;
@@ -114,6 +112,7 @@ class Lightmap {
           vec3 normal = normalize(cross(dFdx(worldPosition), dFdy(worldPosition)));
           float visibility = float(depth + 1.0 / 512.0 > position.z) * max(0.0, dot(rayLight, normal));
 
+          float accumulationFactor = 1.0 / 64.0;
           vec4 previous8 = texture2D(previous, updateUV_);
           vec2 previous16 = vec2(
             dot(previous8.rg, vec2(1.0, 1.0 / 256.0)),
