@@ -11,6 +11,7 @@ class Screen {
     "magFilter": THREE.LinearFilter,
     "format": THREE.RGBAFormat,
   })
+  var _renderGodrays = true
 
   def new(world World) {
     _world = world
@@ -109,6 +110,10 @@ class Screen {
     _scene.add(THREE.Mesh.new(THREE.PlaneGeometry.new(2, 2, 1, 1), _material))
   }
 
+  def renderGodrays=(value bool) {
+    _renderGodrays = value
+  }
+
   def resize(width int, height int) {
     renderTarget.setSize(width, height)
   }
@@ -126,12 +131,14 @@ class Screen {
     uniforms.rayLight.value.copy(light)
     uniforms.cameraToWorldMatrix.value.multiplyMatrices(camera.matrixWorld, _matrix.getInverse(camera.projectionMatrix))
 
-    _vector3.set(0, 0, 1.0)
+    # Fade godrays in as the user looks toward the light
+    _vector3.set(0, 0, 1)
     _vector3.applyMatrix4(uniforms.cameraToWorldMatrix.value)
     _vector3.normalize()
-    uniforms.randomSeed.value = Math.random
-    uniforms.godrayStrength.value = Math.max(0, Math.pow(Math.max(0, light.x * _vector3.x + light.y * _vector3.y + light.z * _vector3.z), 4) / 2 - 0.1)
+    var dot = light.x * _vector3.x + light.y * _vector3.y + light.z * _vector3.z
+    uniforms.godrayStrength.value = _renderGodrays ? Math.max(0, Math.pow(Math.max(0, dot), 4) / 2 - 0.1) : 0
 
+    uniforms.randomSeed.value = Math.random
     renderer.render(_scene, _camera)
   }
 }

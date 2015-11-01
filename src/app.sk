@@ -23,6 +23,18 @@ class App {
     return _renderer.domElement
   }
 
+  def renderTextureMap=(value bool) {
+    _world.terrain.renderTextureMap = value
+  }
+
+  def renderGodrays=(value bool) {
+    _screen.renderGodrays = value
+  }
+
+  def renderFog=(value bool) {
+    _world.terrain.renderFog = value
+  }
+
   def resize(width int, height int) {
     _camera.setViewOffset(width, height, 0, 0, width, height)
     _camera.updateProjectionMatrix()

@@ -9,6 +9,9 @@ def main {
   var keys IntMap<int> = {}
   var app = App.new
   var element = app.element
+  var renderTextureMap = true
+  var renderGodrays = true
+  var renderFog = true
   var tick fn()
   var blur = => {
     keys = {}
@@ -16,6 +19,9 @@ def main {
   }
   var keydown = (e dynamic) => {
     keys[e.which] = 1
+    if e.which == 'T' { renderTextureMap = !renderTextureMap }
+    else if e.which == 'G' { renderGodrays = !renderGodrays }
+    else if e.which == 'F' { renderFog = !renderFog }
   }
   var keyup = (e dynamic) => {
     keys[e.which] = 0
@@ -59,6 +65,9 @@ def main {
       var deltaY = (keys.get('S', 0) - keys.get('W', 0)) * speed
       app.moveCamera(deltaX, deltaY)
 
+      app.renderTextureMap = renderTextureMap
+      app.renderGodrays = renderGodrays
+      app.renderFog = renderFog
       app.tick(seconds)
       document.title = app.title
     }
@@ -67,7 +76,28 @@ def main {
   resize()
   tick()
 
+  var instructions = document.createElement("div")
+  var style = instructions.style
+  style.position = "absolute"
+  style.left = "20px"
+  style.top = "20px"
+  style.padding = "13px 15px"
+  style.background = "rgba(0, 0, 0, 0.5)"
+  style.color = "white"
+  style.pointerEvents = "none"
+  style.whiteSpace = "pre"
+  style.font = "14px/20px sans-serif"
+  style.borderRadius = "5px"
+  instructions.textContent =
+    "W/A/S/D: Move\n" +
+    "Shift: Move fast\n" +
+    "Drag: Rotate\n" +
+    "T: Toggle textures\n" +
+    "G: Toggle godrays\n" +
+    "F: Toggle fog"
+
   document.body.appendChild(element)
+  document.body.appendChild(instructions)
   document.onkeydown = keydown
   document.onkeyup = keyup
   window.onblur = blur
