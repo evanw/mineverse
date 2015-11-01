@@ -2,6 +2,7 @@
 def main {
   const FRAME_SKIP_COUNT = 1 # 30 fps is better than a ragged 60fps since Chrome drops frames sometimes anyway
   const SHIFT_KEY = 16
+  const SPACEBAR_KEY = 32
 
   var oldTime = 0.0
   var pressed = false
@@ -25,9 +26,7 @@ def main {
     keys[e.which] = 0
   }
   var wheel = (e dynamic) => {
-    if e.ctrlKey {
-      app.moveCamera(0, e.deltaY * 0.1)
-    } else {
+    if !e.ctrlKey {
       app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
     }
     e.preventDefault()
@@ -61,10 +60,9 @@ def main {
       var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
       oldTime = newTime
 
-      var speed = (4 + (20 - 4) * keys.get(SHIFT_KEY, 0)) * seconds
-      var deltaX = (keys.get('D', 0) - keys.get('A', 0)) * speed
-      var deltaY = (keys.get('S', 0) - keys.get('W', 0)) * speed
-      app.moveCamera(deltaX, deltaY)
+      var deltaX = keys.get('D', 0) - keys.get('A', 0)
+      var deltaY = keys.get('S', 0) - keys.get('W', 0)
+      app.moveCamera(deltaX, deltaY, seconds, keys.get(SPACEBAR_KEY, 0) != 0, keys.get(SHIFT_KEY, 0) != 0)
 
       app.tick(seconds)
       document.title = app.title

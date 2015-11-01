@@ -260,6 +260,18 @@ class Terrain {
     return .EMPTY
   }
 
+  def isOnFloor(aabb AABB) bool {
+    var min = _min.copy(aabb.center).sub(aabb.radius).floor()
+    var max = _max.copy(aabb.center).add(aabb.radius).ceil()
+    return aabb.center.y - aabb.radius.y - min.y < 0.01 && !_isEmpty(min.x, max.x + 1, min.y - 1, min.y - 1, min.z, max.z + 1)
+  }
+
+  def isOnCeiling(aabb AABB) bool {
+    var min = _min.copy(aabb.center).sub(aabb.radius).floor()
+    var max = _max.copy(aabb.center).add(aabb.radius).ceil()
+    return max.y - aabb.center.y - aabb.radius.y < 0.01 && !_isEmpty(min.x, max.x + 1, max.y, max.y, min.z, max.z + 1)
+  }
+
   def _isEmpty(xmin int, xmax int, ymin int, ymax int, zmin int, zmax int) bool {
     for x in xmin..xmax + 1 {
       for y in ymin..ymax + 1 {
@@ -274,13 +286,26 @@ class Terrain {
   }
 
   def moveAABB(aabb AABB, delta dynamic) {
+    # Move up in Y first so the player is more likely to clear stuff
+    if delta.y > 0 {
+      _moveAlongAxis(aabb, 1, delta.y)
+    }
+
     _moveAlongAxis(aabb, 0, delta.x)
-    _moveAlongAxis(aabb, 1, delta.y)
     _moveAlongAxis(aabb, 2, delta.z)
+
+    # Move down in Y last so the player is more likely to clear stuff
+    if delta.y < 0 {
+      _moveAlongAxis(aabb, 1, delta.y)
+    }
   }
 
   def _moveAlongAxis(aabb AABB, axis int, delta double) {
     const EPSILON = 0.0001
+
+    if delta == 0 {
+      return
+    }
 
     var min = _min.copy(aabb.center).sub(aabb.radius).floor()
     var max = _max.copy(aabb.center).add(aabb.radius).ceil()
