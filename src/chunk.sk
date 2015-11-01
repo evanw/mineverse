@@ -227,7 +227,43 @@ class Chunk {
     _updatePosition = []
     _indices = []
 
-    # Generate geometry
+    _generateGeometry
+
+    # Free all unused quads
+    for quad in _quadPreviousIndices.values {
+      _terrain.lightmap.free(quad)
+    }
+    _quadPreviousIndices = _quadIndices
+    _quadIndices = null
+
+    # Upload the data to the GPU
+    _geometry = THREE.BufferGeometry.new()
+    _geometry.setIndex(THREE.BufferAttribute.new(Uint16Array.new(_indices), 1))
+    _geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_vertices), 3))
+    _geometry.addAttribute("uvs", THREE.BufferAttribute.new(Float32Array.new(_uvs), 4))
+    _geometry.addAttribute("updateUV", THREE.BufferAttribute.new(Float32Array.new(_updateUVs), 2))
+    _geometry.addAttribute("updatePosition", THREE.BufferAttribute.new(Float32Array.new(_updatePosition), 3))
+
+    # Add the new mesh
+    _mesh = THREE.Mesh.new(_geometry, _material)
+    _depthMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.depthMaterial)
+    _updateMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.updateMaterial)
+    _group.add(_mesh)
+    _depthGroup.add(_depthMesh)
+    _updateGroup.add(_updateMesh)
+    _updateMesh.frustumCulled = false
+
+    # Allow these to be garbage collected
+    _vertices = null
+    _uvs = null
+    _updateUVs = null
+    _updatePosition = null
+    _indices = null
+
+    _isInvalid = false
+  }
+
+  def _generateGeometry {
     for x in _startX.._startX + SIZE_X + 1 {
       for y in _startY.._startY + SIZE_Y + 1 {
         for z in _startZ.._startZ + SIZE_Z + 1 {
@@ -277,39 +313,6 @@ class Chunk {
         }
       }
     }
-
-    # Free all unused quads
-    for quad in _quadPreviousIndices.values {
-      _terrain.lightmap.free(quad)
-    }
-    _quadPreviousIndices = _quadIndices
-    _quadIndices = null
-
-    # Upload the data to the GPU
-    _geometry = THREE.BufferGeometry.new()
-    _geometry.setIndex(THREE.BufferAttribute.new(Uint16Array.new(_indices), 1))
-    _geometry.addAttribute("position", THREE.BufferAttribute.new(Float32Array.new(_vertices), 3))
-    _geometry.addAttribute("uvs", THREE.BufferAttribute.new(Float32Array.new(_uvs), 4))
-    _geometry.addAttribute("updateUV", THREE.BufferAttribute.new(Float32Array.new(_updateUVs), 2))
-    _geometry.addAttribute("updatePosition", THREE.BufferAttribute.new(Float32Array.new(_updatePosition), 3))
-
-    # Add the new mesh
-    _mesh = THREE.Mesh.new(_geometry, _material)
-    _depthMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.depthMaterial)
-    _updateMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.updateMaterial)
-    _group.add(_mesh)
-    _depthGroup.add(_depthMesh)
-    _updateGroup.add(_updateMesh)
-    _updateMesh.frustumCulled = false
-
-    # Allow these to be garbage collected
-    _vertices = null
-    _uvs = null
-    _updateUVs = null
-    _updatePosition = null
-    _indices = null
-
-    _isInvalid = false
   }
 
   def _appendQuad(x int, y int, z int, ax int, ay int, az int, bx int, by int, bz int, textureIndex int, quadIndex int) {
@@ -357,15 +360,19 @@ class Chunk {
 
   def _appendVertex(x int, y int, z int, s0 double, t0 double, s1 double, t1 double, s2 double, t2 double, cx double, cy double, cz double) {
     var expansion = Lightmap.CELL_SIZE / (Lightmap.CELL_SIZE - 1.0)
+
     _vertices.append(x)
     _vertices.append(y)
     _vertices.append(z)
+
     _uvs.append(s0)
     _uvs.append(t0)
     _uvs.append(s1)
     _uvs.append(t1)
+
     _updateUVs.append(s2)
     _updateUVs.append(t2)
+
     _updatePosition.append(cx + (x - cx) * expansion)
     _updatePosition.append(cy + (y - cy) * expansion)
     _updatePosition.append(cz + (z - cz) * expansion)
