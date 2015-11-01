@@ -25,11 +25,13 @@ class Terrain {
       THREE.UniformsLib.common,
       {"map": {"type": "t", "value": null}},
       {"lightmap": {"type": "t", "value": null}},
+      {"rayLight": {"type": "v3", "value": THREE.Vector3.new()}},
       {"clearColor": {"type": "c", "value": world.clearColor}},
       {"drawDistance": {"type": "f", "value": 0}},
       {"randomSeed": {"type": "f", "value": 0}},
       {"renderTextureMap": {"type": "i", "value": true}},
       {"renderFog": {"type": "i", "value": true}},
+      {"renderOcclusion": {"type": "i", "value": true}},
     ])
     uniforms.map.value = _texture
     uniforms.lightmap.value = _lightmap.texture
@@ -38,14 +40,16 @@ class Terrain {
       "uniforms": uniforms,
       "vertexShader": "
         attribute vec4 uvs;
-        varying vec3 position_;
+        varying vec3 worldSpacePosition;
+        varying vec3 cameraSpacePosition;
         varying vec4 uvs_;
 
         void main() {
-          vec4 cameraSpacePosition = modelViewMatrix * vec4(position, 1.0);
-          position_ = cameraSpacePosition.xyz;
+          worldSpacePosition = position;
+          vec4 transformed = modelViewMatrix * vec4(position, 1.0);
+          cameraSpacePosition = transformed.xyz / transformed.w;
           uvs_ = uvs;
-          gl_Position = projectionMatrix * cameraSpacePosition;
+          gl_Position = projectionMatrix * transformed;
         }
       ",
       "fragmentShader": "\n".join([
@@ -53,25 +57,38 @@ class Terrain {
         "
         uniform bool renderTextureMap;
         uniform bool renderFog;
+        uniform bool renderOcclusion;
         uniform sampler2D map;
         uniform sampler2D lightmap;
         uniform float randomSeed;
+        uniform vec3 rayLight;
         uniform vec3 clearColor;
         uniform float drawDistance;
-        varying vec3 position_;
+        varying vec3 worldSpacePosition;
+        varying vec3 cameraSpacePosition;
         varying vec4 uvs_;
 
         void main() {
-          vec4 sample = texture2D(lightmap, uvs_.zw);
-          float occlusion = 1.0 -
-            dot(sample.rg, vec2(1.0, 1.0 / 256.0)) /
-            dot(sample.ba, vec2(1.0, 1.0 / 256.0));
+          // Occlusion
+          float occlusion;
+          if (renderOcclusion) {
+            vec4 sample = texture2D(lightmap, uvs_.zw);
+            occlusion = 1.0 -
+              dot(sample.rg, vec2(1.0, 1.0 / 256.0)) /
+              dot(sample.ba, vec2(1.0, 1.0 / 256.0));
+          } else {
+            vec3 normal = normalize(cross(dFdx(worldSpacePosition), dFdy(worldSpacePosition)));
+            occlusion = 0.1 + 0.9 * max(0.0, dot(rayLight, normal));
+          }
+
+          // Terrain
           vec3 color = renderTextureMap ? inputToLinear(texture2D(map, uvs_.xy).rgb) * occlusion : vec3(occlusion);
-          vec3 normal = normalize(cross(dFdx(position_), dFdy(position_)));
           if (renderFog) {
-            float fade = max(0.0, 1.0 - length(position_) / drawDistance);
+            float fade = max(0.0, 1.0 - length(cameraSpacePosition) / drawDistance);
             color = mix(inputToLinear(clearColor), color, 1.0 - exp(fade * fade * -5.541263545158676));
           }
+
+          // Finalize
           color = linearToOutput(color);
           float random = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
           color += (random - 0.5) / 255.0;
@@ -88,12 +105,19 @@ class Terrain {
     _updateGroup.frustumCulled = false
   }
 
-  def renderTextureMap=(value bool) {
-    _material.uniforms.renderTextureMap.value = value
+  def toggleRenderTextureMap {
+    var uniform = _material.uniforms.renderTextureMap
+    uniform.value = !uniform.value
   }
 
-  def renderFog=(value bool) {
-    _material.uniforms.renderFog.value = value
+  def toggleRenderFog {
+    var uniform = _material.uniforms.renderFog
+    uniform.value = !uniform.value
+  }
+
+  def toggleRenderOcclusion {
+    var uniform = _material.uniforms.renderOcclusion
+    uniform.value = !uniform.value
   }
 
   def chunks List<Chunk> {
@@ -211,8 +235,11 @@ class Terrain {
     _drawDistance = Math.max(MIN_DRAW_DISTANCE, Math.min(MAX_DRAW_DISTANCE, _drawDistance + (_averageFPS - TARGET_FPS) * seconds))
 
     _update(camera)
-    _material.uniforms.drawDistance.value = _drawDistance
-    _material.uniforms.randomSeed.value = Math.random
+
+    var uniforms = _material.uniforms
+    uniforms.drawDistance.value = _drawDistance
+    uniforms.randomSeed.value = Math.random
+    uniforms.rayLight.value.copy(_world.light.position)
   }
 
   def get(x int, y int, z int) Cell {

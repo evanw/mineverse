@@ -110,8 +110,8 @@ class Screen {
     _scene.add(THREE.Mesh.new(THREE.PlaneGeometry.new(2, 2, 1, 1), _material))
   }
 
-  def renderGodrays=(value bool) {
-    _renderGodrays = value
+  def toggleRenderGodrays {
+    _renderGodrays = !_renderGodrays
   }
 
   def resize(width int, height int) {

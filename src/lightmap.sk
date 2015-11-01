@@ -111,14 +111,14 @@ class Lightmap {
           vec3 position = clipPosition.xyz / clipPosition.w * 0.5 + 0.5;
           vec3 encoded = texture2D(map, position.xy).rgb;
           float depth = dot(encoded, vec3(1.0, 1.0 / 256.0, 1.0 / 65536.0));
-          vec3 normal = cross(dFdx(worldPosition), dFdy(worldPosition));
-          float occlusion = float(depth + 1.0 / 256.0 < position.z || dot(rayLight, normal) < 0.0);
+          vec3 normal = normalize(cross(dFdx(worldPosition), dFdy(worldPosition)));
+          float visibility = float(depth + 1.0 / 256.0 > position.z) * max(0.0, dot(rayLight, normal));
 
           vec4 previous8 = texture2D(previous, updateUV_);
           vec2 previous16 = vec2(
             dot(previous8.rg, vec2(1.0, 1.0 / 256.0)),
             dot(previous8.ba, vec2(1.0, 1.0 / 256.0)));
-          vec2 next16 = mix(previous16, vec2(occlusion, 1.0), accumulationFactor);
+          vec2 next16 = mix(previous16, vec2(1.0 - visibility, 1.0), accumulationFactor);
           vec4 next8 = fract(vec4(next16.x * vec2(1.0, 256.0), next16.y * vec2(1.0, 256.0)));
           next8 = floor(next8 * 256.0) / 256.0;
           gl_FragColor = next8;

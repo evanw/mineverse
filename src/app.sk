@@ -23,16 +23,20 @@ class App {
     return _renderer.domElement
   }
 
-  def renderTextureMap=(value bool) {
-    _world.terrain.renderTextureMap = value
+  def toggleRenderTextureMap {
+    _world.terrain.toggleRenderTextureMap
   }
 
-  def renderGodrays=(value bool) {
-    _screen.renderGodrays = value
+  def toggleRenderGodrays {
+    _screen.toggleRenderGodrays
   }
 
-  def renderFog=(value bool) {
-    _world.terrain.renderFog = value
+  def toggleRenderFog {
+    _world.terrain.toggleRenderFog
+  }
+
+  def toggleRenderOcclusion {
+    _world.terrain.toggleRenderOcclusion
   }
 
   def resize(width int, height int) {
