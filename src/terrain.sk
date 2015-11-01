@@ -230,7 +230,7 @@ class Terrain {
     return total
   }
 
-  def tick(seconds double, camera dynamic) {
+  def tick(seconds double, camera dynamic, renderer dynamic) {
     # Adjust the draw distance to maintain a good frame rate
     _averageFPS = _averageFPS * 0.95 + 0.05 / seconds
     _drawDistance = Math.max(MIN_DRAW_DISTANCE, Math.min(MAX_DRAW_DISTANCE, _drawDistance + (_averageFPS - TARGET_FPS) * seconds))
@@ -241,6 +241,11 @@ class Terrain {
     uniforms.drawDistance.value = _drawDistance
     uniforms.randomSeed.value = Math.random
     uniforms.rayLight.value.copy(_world.light.position)
+
+    # Only update the lightmap if it's currently being used
+    if uniforms.renderOcclusion.value {
+      lightmap.render(renderer, self, _world.light.position)
+    }
   }
 
   def get(x int, y int, z int) Cell {

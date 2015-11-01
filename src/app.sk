@@ -66,8 +66,7 @@ class App {
     _camera.position.copy(_cameraAABB.center)
     _camera.updateMatrixWorld()
     _camera.matrixWorldInverse.getInverse(_camera.matrixWorld)
-    _world.tick(seconds, _camera)
-    _world.terrain.lightmap.render(_renderer, _world.terrain, _world.light)
+    _world.tick(seconds, _camera, _renderer)
 
     var target = _screen.renderTarget
     _renderer.setViewport(0, 0, target.width, target.height)

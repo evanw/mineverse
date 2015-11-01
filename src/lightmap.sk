@@ -232,7 +232,7 @@ class Lightmap {
         _axisZ.y += 1
         _axisZ.normalize()
       } else {
-        _axisZ.multiplyScalar(0.1).add(light.position).normalize()
+        _axisZ.multiplyScalar(0.1).add(light).normalize()
       }
       _axisY.set(_axisZ.y, _axisZ.z, _axisZ.x).cross(_axisZ).normalize()
       _axisX.copy(_axisY).cross(_axisZ).normalize()

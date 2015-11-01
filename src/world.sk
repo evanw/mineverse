@@ -7,7 +7,7 @@ class World {
   const scene dynamic
   const terrain Terrain
   const light = THREE.DirectionalLight.new(0xFFFFFF, 1)
-  const clearColor = THREE.Color.new(0x7FBFFF)
+  const clearColor = THREE.Color.new(0xCCDDEE)
 
   def new(scene dynamic) {
     self.scene = scene
@@ -23,7 +23,7 @@ class World {
     terrain.moveAABB(aabb, delta)
   }
 
-  def tick(seconds double, camera dynamic) {
-    terrain.tick(seconds, camera)
+  def tick(seconds double, camera dynamic, renderer dynamic) {
+    terrain.tick(seconds, camera, renderer)
   }
 }
