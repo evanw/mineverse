@@ -139,7 +139,11 @@ class Lightmap {
       ",
       "fragmentShader": "
         void main() {
-          gl_FragColor = vec4(0.0);
+          // Clear to a gray color with very low weight instead of to zero.
+          // Using zero led to a divide by zero when evaluating the occlusion
+          // which poisoned all values with NaN and led to black flashes on
+          // some cards.
+          gl_FragColor = vec4(0.0, 0.5, 0.0, 1.0);
         }
       ",
     })
@@ -212,7 +216,11 @@ class Lightmap {
   }
 
   def render(renderer dynamic, terrain Terrain, light dynamic) {
-    if _count % 2 == 0 {
+    var bit = _count & 1
+    var updateShadowmap = bit == 0
+    var updateLightmap = bit == 1
+
+    if updateShadowmap {
       var theta = Math.random * (2 * Math.PI)
       var phi = Math.asin(2 * Math.random - 1)
       _axisZ.set(
@@ -263,33 +271,33 @@ class Lightmap {
       renderer.render(depthScene, _camera, _depthTexture)
     }
 
+    renderer.autoClear = false
+    renderer.setViewport(0, 0, _textureA.width, _textureA.height)
+
+    # Clear all new quads immediately
+    if !_clearVertices.isEmpty {
+      var geometry = THREE.BufferGeometry.new()
+      geometry.addAttribute("position", THREE.Float32Attribute(_clearVertices.data, 3))
+      var clearMesh = THREE.Mesh.new(geometry, _clearMaterial)
+      clearMesh.frustumCulled = false
+      _clearScene.add(clearMesh)
+      renderer.render(_clearScene, _camera, _textureA)
+      _clearScene.remove(clearMesh)
+      _clearVertices.clear
+    }
+
     # Accumulate the depth map onto the light map texture
-    else {
-      renderer.autoClear = false
-      renderer.setViewport(0, 0, _textureA.width, _textureA.height)
-
-      if !_clearVertices.isEmpty {
-        var geometry = THREE.BufferGeometry.new()
-        geometry.addAttribute("position", THREE.Float32Attribute(_clearVertices.data, 3))
-        var clearMesh = THREE.Mesh.new(geometry, _clearMaterial)
-        clearMesh.frustumCulled = false
-        _clearScene.add(clearMesh)
-        renderer.render(_clearScene, _camera, _textureA)
-        _clearScene.remove(clearMesh)
-        _clearVertices.clear
-      }
-
+    if updateLightmap {
       updateMaterial.uniforms.rayLight.value.copy(_axisZ)
       updateMaterial.uniforms.previous.value = _textureA
-
       renderer.render(updateScene, _camera, _textureB)
-      renderer.autoClear = true
 
       var swap = _textureA
       _textureA = _textureB
       _textureB = swap
     }
 
+    renderer.autoClear = true
     _count++
   }
 }

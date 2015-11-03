@@ -72,12 +72,12 @@ class Screen {
           float random = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
           vec3 deltaRayX = dFdx(ray_) / dFdx(uv_).x;
           vec3 deltaRayY = dFdy(ray_) / dFdy(uv_).y;
-          const int count = 12;
+          const int count = 8;
           float alpha = 0.0;
 
           for (int i = 0; i < count; i++) {
             float t = (float(i) + random) / float(count);
-            vec2 uv = mix(uv_, uvLight.xy, t * 0.5);
+            vec2 uv = mix(uv_, uvLight.xy, t);
             vec3 ray = ray_ +
               deltaRayX * (uv.x - uv_.x) +
               deltaRayY * (uv.y - uv_.y);
