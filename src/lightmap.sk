@@ -282,6 +282,7 @@ class Lightmap {
       clearMesh.frustumCulled = false
       _clearScene.add(clearMesh)
       renderer.render(_clearScene, _camera, _textureA)
+      renderer.render(_clearScene, _camera, _textureB)
       _clearScene.remove(clearMesh)
       _clearVertices.clear
     }
