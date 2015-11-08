@@ -17,10 +17,7 @@ def main {
   }
   var keydown = (e dynamic) => {
     keys[e.which] = 1
-    if e.which == 'T' { app.toggleRenderTextureMap }
-    else if e.which == 'G' { app.toggleRenderGodrays }
-    else if e.which == 'F' { app.toggleRenderFog }
-    else if e.which == 'O' { app.toggleRenderOcclusion }
+    if e.which == 'F' { app.toggleRenderFog }
   }
   var keyup = (e dynamic) => {
     keys[e.which] = 0
@@ -88,10 +85,7 @@ def main {
     "W/A/S/D: Move\n" +
     "Shift: Move fast\n" +
     "Drag: Rotate\n" +
-    "T: Toggle textures\n" +
-    "G: Toggle godrays\n" +
-    "F: Toggle fog\n" +
-    "O: Toggle occlusion"
+    "F: Toggle fog"
 
   document.body.appendChild(element)
   document.body.appendChild(instructions)

@@ -11,7 +11,6 @@ class Screen {
     "magFilter": THREE.LinearFilter,
     "format": THREE.RGBAFormat,
   })
-  var _renderGodrays = true
 
   def new(world World) {
     _world = world
@@ -24,7 +23,6 @@ class Screen {
       {"uvLight": {"type": "v3", "value": THREE.Vector3.new()}},
       {"rayLight": {"type": "v3", "value": THREE.Vector3.new()}},
       {"randomSeed": {"type": "f", "value": 0}},
-      {"godrayStrength": {"type": "f", "value": 0}},
     ])
     uniforms.map.value = renderTarget
     renderTarget.texture.generateMipmaps = false
@@ -55,7 +53,6 @@ class Screen {
         uniform vec3 clearColor;
         uniform vec3 rayLight;
         uniform vec3 uvLight;
-        uniform float godrayStrength;
         varying vec3 ray_;
         varying vec2 uv_;
 
@@ -64,43 +61,10 @@ class Screen {
           return pow(falloff, 4.0);
         }
 
-        float godray() {
-          if (godrayStrength == 0.0) {
-            return 0.0;
-          }
-
-          float random = fract(sin(dot(gl_FragCoord.xy + randomSeed, vec2(12.9898, 78.233))) * 43758.5453);
-          vec3 deltaRayX = dFdx(ray_) / dFdx(uv_).x;
-          vec3 deltaRayY = dFdy(ray_) / dFdy(uv_).y;
-          const int count = 8;
-          float alpha = 0.0;
-
-          for (int i = 0; i < count; i++) {
-            float t = (float(i) + random) / float(count);
-            vec2 uv = mix(uv_, uvLight.xy, t);
-            vec3 ray = ray_ +
-              deltaRayX * (uv.x - uv_.x) +
-              deltaRayY * (uv.y - uv_.y);
-            float magnitude = lightMagnitude(ray);
-
-            if (magnitude != 0.0) {
-              float occlusion = 1.0 - texture2D(map, uv).a;
-              float falloff = 1.0 - t;
-              alpha += occlusion * falloff;
-            }
-          }
-
-          // The integral of (1.0 - t) from 0 to 1 is 0.5
-          alpha *= 2.0;
-
-          return alpha * godrayStrength / float(count);
-        }
-
         void main() {
           vec4 color = texture2D(map, uv_);
           vec3 backgroundColor = mix(clearColor, vec3(1.0), lightMagnitude(ray_));
           color.rgb = mix(backgroundColor, color.rgb, color.a);
-          color.rgb += godray();
           gl_FragColor = color;
         }
         ",
@@ -108,10 +72,6 @@ class Screen {
       "derivatives": true,
     })
     _scene.add(THREE.Mesh.new(THREE.PlaneGeometry.new(2, 2, 1, 1), _material))
-  }
-
-  def toggleRenderGodrays {
-    _renderGodrays = !_renderGodrays
   }
 
   def resize(width int, height int) {
@@ -130,13 +90,6 @@ class Screen {
 
     uniforms.rayLight.value.copy(light)
     uniforms.cameraToWorldMatrix.value.multiplyMatrices(camera.matrixWorld, _matrix.getInverse(camera.projectionMatrix))
-
-    # Fade godrays in as the user looks toward the light
-    _vector3.set(0, 0, 1)
-    _vector3.applyMatrix4(uniforms.cameraToWorldMatrix.value)
-    _vector3.normalize()
-    var dot = light.x * _vector3.x + light.y * _vector3.y + light.z * _vector3.z
-    uniforms.godrayStrength.value = _renderGodrays ? Math.max(0, Math.pow(Math.max(0, dot), 4) / 2 - 0.1) : 0
 
     uniforms.randomSeed.value = Math.random
     renderer.render(_scene, _camera)

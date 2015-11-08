@@ -41,8 +41,6 @@ enum Face {
 class Chunk {
   const _terrain Terrain
   const _group dynamic
-  const _depthGroup dynamic
-  const _updateGroup dynamic
   const _material dynamic
   const _startX int
   const _startY int
@@ -51,18 +49,11 @@ class Chunk {
   const _neighbors List<Chunk> = [null, null, null, null, null, null]
   const _vertices = FloatArray.new
   const _uvs = FloatArray.new
-  const _updateUVs = FloatArray.new
-  const _updatePosition = FloatArray.new
   const _indices = IntArray.new
-  const _quads = IntArray.new
   var _outerBox = THREE.Box2.new()
   var _innerBox = THREE.Box2.new()
-  var _quadIndices IntMap<int> = null
-  var _quadPreviousIndices IntMap<int> = {}
   var _geometry dynamic = null
   var _mesh dynamic = null
-  var _depthMesh dynamic = null
-  var _updateMesh dynamic = null
   var _isInvalid = false
 
   def destroy {
@@ -78,33 +69,12 @@ class Chunk {
         neighbor._neighbors[opposite] = null
       }
     }
-
-    # Free all quads
-    if !_quads.isEmpty {
-      for i in 0.._quads.count {
-        _terrain.lightmap.free(_quads[i])
-      }
-      _quads.clear
-    }
-
-    _quadIndices = null
-    _quadPreviousIndices = {}
   }
 
   def _destroyMeshesAndGeometry {
     if _mesh != null {
       _group.remove(_mesh)
       _mesh = null
-    }
-
-    if _depthMesh != null {
-      _depthGroup.remove(_depthMesh)
-      _depthMesh = null
-    }
-
-    if _updateMesh != null {
-      _updateGroup.remove(_updateMesh)
-      _updateMesh = null
     }
 
     if _geometry != null {
@@ -209,40 +179,22 @@ class Chunk {
     }
 
     _destroyMeshesAndGeometry
-    _quads.clear
-    _quadIndices = {}
 
     _generateGeometry
-
-    # Free all unused quads
-    for quad in _quadPreviousIndices.values {
-      _terrain.lightmap.free(quad)
-    }
-    _quadPreviousIndices = _quadIndices
-    _quadIndices = null
 
     # Upload the data to the GPU
     _geometry = THREE.BufferGeometry.new()
     _geometry.setIndex(THREE.Uint16Attribute(_indices.data, 1))
     _geometry.addAttribute("position", THREE.Float32Attribute(_vertices.data, 3))
-    _geometry.addAttribute("uvs", THREE.Float32Attribute(_uvs.data, 4))
-    _geometry.addAttribute("updateUV", THREE.Float32Attribute(_updateUVs.data, 2))
-    _geometry.addAttribute("updatePosition", THREE.Float32Attribute(_updatePosition.data, 3))
+    _geometry.addAttribute("uv", THREE.Float32Attribute(_uvs.data, 2))
 
     # Add the new mesh
     _mesh = THREE.Mesh.new(_geometry, _material)
-    _depthMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.depthMaterial)
-    _updateMesh = THREE.Mesh.new(_geometry, _terrain.lightmap.updateMaterial)
     _group.add(_mesh)
-    _depthGroup.add(_depthMesh)
-    _updateGroup.add(_updateMesh)
-    _updateMesh.frustumCulled = false
 
     # Reset state
     _vertices.clear
     _uvs.clear
-    _updateUVs.clear
-    _updatePosition.clear
     _indices.clear
 
     _isInvalid = false
@@ -250,7 +202,6 @@ class Chunk {
 
   def _generateGeometry {
     var textureIndex = TEXTURE_INDEX
-    var quadBaseIndex = 0
     var startX = _startX
     var startY = _startY
     var startZ = _startZ
@@ -285,9 +236,9 @@ class Chunk {
 
             # Quad
             if neg == .EMPTY && pos != .EMPTY {
-              _appendQuad(startX + x, startY + y + 1, startZ + z + 1, 0, 0, -1, 0, -1, 0, textureIndex[pos * 3 + Face.SIDES], quadBaseIndex)
+              _appendQuad(startX + x, startY + y + 1, startZ + z + 1, 0, 0, -1, 0, -1, 0, textureIndex[pos * 3 + Face.SIDES])
             } else if neg != .EMPTY && pos == .EMPTY {
-              _appendQuad(startX + x, startY + y + 1, startZ + z, 0, 0, 1, 0, -1, 0, textureIndex[neg * 3 + Face.SIDES], quadBaseIndex + 1)
+              _appendQuad(startX + x, startY + y + 1, startZ + z, 0, 0, 1, 0, -1, 0, textureIndex[neg * 3 + Face.SIDES])
             }
           }
 
@@ -318,9 +269,9 @@ class Chunk {
 
             # Quad
             if neg == .EMPTY && pos != .EMPTY {
-              _appendQuad(startX + x, startY + y, startZ + z, 1, 0, 0, 0, 0, 1, textureIndex[pos * 3 + Face.BOTTOM], quadBaseIndex + 2)
+              _appendQuad(startX + x, startY + y, startZ + z, 1, 0, 0, 0, 0, 1, textureIndex[pos * 3 + Face.BOTTOM])
             } else if neg != .EMPTY && pos == .EMPTY {
-              _appendQuad(startX + x + 1, startY + y, startZ + z, -1, 0, 0, 0, 0, 1, textureIndex[neg * 3 + Face.TOP], quadBaseIndex + 3)
+              _appendQuad(startX + x + 1, startY + y, startZ + z, -1, 0, 0, 0, 0, 1, textureIndex[neg * 3 + Face.TOP])
             }
           }
 
@@ -351,23 +302,17 @@ class Chunk {
 
             # Quad
             if neg == .EMPTY && pos != .EMPTY {
-              _appendQuad(startX + x, startY + y + 1, startZ + z, 1, 0, 0, 0, -1, 0, textureIndex[pos * 3 + Face.SIDES], quadBaseIndex + 4)
+              _appendQuad(startX + x, startY + y + 1, startZ + z, 1, 0, 0, 0, -1, 0, textureIndex[pos * 3 + Face.SIDES])
             } else if neg != .EMPTY && pos == .EMPTY {
-              _appendQuad(startX + x + 1, startY + y + 1, startZ + z, -1, 0, 0, 0, -1, 0, textureIndex[neg * 3 + Face.SIDES], quadBaseIndex + 5)
+              _appendQuad(startX + x + 1, startY + y + 1, startZ + z, -1, 0, 0, 0, -1, 0, textureIndex[neg * 3 + Face.SIDES])
             }
           }
-
-          quadBaseIndex += 6
         }
       }
     }
   }
 
-  def _appendQuad(x int, y int, z int, ax int, ay int, az int, bx int, by int, bz int, textureIndex int, quadIndex int) {
-    var cx = x + ax * 0.5 + bx * 0.5
-    var cy = y + ay * 0.5 + by * 0.5
-    var cz = z + az * 0.5 + bz * 0.5
-
+  def _appendQuad(x int, y int, z int, ax int, ay int, az int, bx int, by int, bz int, textureIndex int) {
     var s0 = (1 + textureIndex % 16) / 16.0 - 0.0001
     var t0 = 1 - (textureIndex / 16) / 16.0 - 0.0001
     var s1 = s0 - 1 / 16.0 + 0.0002
@@ -377,36 +322,15 @@ class Chunk {
     _indices.append(i, i + 1, i + 2)
     _indices.append(i, i + 2, i + 3)
 
-    # Reuse existing lightmap data if this isn't a new quad
-    var index = _quadPreviousIndices.get(quadIndex, -1)
-    if index == -1 {
-      index = _terrain.lightmap.allocate
-    } else {
-      _quadPreviousIndices.remove(quadIndex)
-    }
-    var inner = _innerBox
-    var outer = _outerBox
-    _terrain.lightmap.innerQuadForIndex(index, inner)
-    _terrain.lightmap.outerQuadForIndex(index, outer)
-    _quads.append(index)
-    _quadIndices[quadIndex] = index
-
-    _appendVertex(x,           y,           z,           s0, t0, inner.min.x, inner.min.y, outer.min.x, outer.min.y, cx, cy, cz)
-    _appendVertex(x + ax,      y + ay,      z + az,      s1, t0, inner.max.x, inner.min.y, outer.max.x, outer.min.y, cx, cy, cz)
-    _appendVertex(x + ax + bx, y + ay + by, z + az + bz, s1, t1, inner.max.x, inner.max.y, outer.max.x, outer.max.y, cx, cy, cz)
-    _appendVertex(x +      bx, y +      by, z +      bz, s0, t1, inner.min.x, inner.max.y, outer.min.x, outer.max.y, cx, cy, cz)
+    _appendVertex(x,           y,           z,           s0, t0)
+    _appendVertex(x + ax,      y + ay,      z + az,      s1, t0)
+    _appendVertex(x + ax + bx, y + ay + by, z + az + bz, s1, t1)
+    _appendVertex(x +      bx, y +      by, z +      bz, s0, t1)
   }
 
-  def quadCount int {
-    return _quads != null ? _quads.count : 0
-  }
-
-  def _appendVertex(x int, y int, z int, s0 double, t0 double, s1 double, t1 double, s2 double, t2 double, cx double, cy double, cz double) {
-    var expansion = Lightmap.CELL_SIZE / (Lightmap.CELL_SIZE - 1.0)
+  def _appendVertex(x int, y int, z int, s double, t double) {
     _vertices.append(x, y, z)
-    _uvs.append(s0, t0, s1, t1)
-    _updateUVs.append(s2, t2)
-    _updatePosition.append(cx + (x - cx) * expansion, cy + (y - cy) * expansion, cz + (z - cz) * expansion)
+    _uvs.append(s, t)
   }
 
   def generate {

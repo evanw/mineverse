@@ -5,16 +5,11 @@ class Terrain {
   const _chunkList List<Chunk> = []
   const _chunkMap IntMap<Chunk> = {}
   const _group = THREE.Group.new()
-  const _depthGroup = THREE.Group.new()
-  const _updateGroup = THREE.Group.new()
   const _frustum = THREE.Frustum.new()
   const _box = THREE.Box3.new()
   const _matrix = THREE.Matrix4.new()
   const _min = THREE.Vector3.new()
   const _max = THREE.Vector3.new()
-  const _lightmap = Lightmap.new(1024, 1024)
-  var _drawDistance = (MIN_DRAW_DISTANCE + MAX_DRAW_DISTANCE) / 2
-  var _averageFPS = 60.0
 
   def new(world World) {
     _world = world
@@ -24,66 +19,48 @@ class Terrain {
     var uniforms = THREE.UniformsUtils.merge([
       THREE.UniformsLib.common,
       {"map": {"type": "t", "value": null}},
-      {"lightmap": {"type": "t", "value": null}},
       {"rayLight": {"type": "v3", "value": THREE.Vector3.new()}},
       {"clearColor": {"type": "c", "value": world.clearColor}},
-      {"drawDistance": {"type": "f", "value": 0}},
+      {"drawDistance": {"type": "f", "value": DRAW_DISTANCE}},
       {"randomSeed": {"type": "f", "value": 0}},
-      {"renderTextureMap": {"type": "i", "value": true}},
       {"renderFog": {"type": "i", "value": true}},
-      {"renderOcclusion": {"type": "i", "value": true}},
     ])
     uniforms.map.value = _texture
-    uniforms.lightmap.value = _lightmap.texture
 
     _material = THREE.ShaderMaterial.new({
       "uniforms": uniforms,
       "vertexShader": "
-        attribute vec4 uvs;
         varying vec3 worldSpacePosition;
         varying vec3 cameraSpacePosition;
-        varying vec4 uvs_;
+        varying vec2 uv_;
 
         void main() {
           worldSpacePosition = position;
           vec4 transformed = modelViewMatrix * vec4(position, 1.0);
           cameraSpacePosition = transformed.xyz / transformed.w;
-          uvs_ = uvs;
+          uv_ = uv;
           gl_Position = projectionMatrix * transformed;
         }
       ",
       "fragmentShader": "\n".join([
         THREE.ShaderChunk.common,
         "
-        uniform bool renderTextureMap;
         uniform bool renderFog;
-        uniform bool renderOcclusion;
         uniform sampler2D map;
-        uniform sampler2D lightmap;
         uniform float randomSeed;
         uniform vec3 rayLight;
         uniform vec3 clearColor;
         uniform float drawDistance;
         varying vec3 worldSpacePosition;
         varying vec3 cameraSpacePosition;
-        varying vec4 uvs_;
+        varying vec2 uv_;
 
         void main() {
-          // Occlusion
-          float occlusion;
-          if (renderOcclusion) {
-            vec4 sample = texture2D(lightmap, uvs_.zw);
-            occlusion = 1.0 -
-              dot(sample.rg, vec2(1.0, 1.0 / 256.0)) /
-              dot(sample.ba, vec2(1.0, 1.0 / 256.0));
-            occlusion = 0.01 + 0.99 * occlusion;
-          } else {
-            vec3 normal = normalize(cross(dFdx(worldSpacePosition), dFdy(worldSpacePosition)));
-            occlusion = 0.1 + 0.9 * max(0.0, dot(rayLight, normal));
-          }
+          vec3 normal = normalize(cross(dFdx(worldSpacePosition), dFdy(worldSpacePosition)));
+          float lighting = 0.1 + 0.9 * max(0.0, dot(rayLight, normal));
 
           // Terrain
-          vec3 color = renderTextureMap ? inputToLinear(texture2D(map, uvs_.xy).rgb) * occlusion : vec3(occlusion);
+          vec3 color = inputToLinear(texture2D(map, uv_).rgb) * lighting;
           if (renderFog) {
             float fade = max(0.0, 1.0 - length(cameraSpacePosition) / drawDistance);
             color = mix(inputToLinear(clearColor), color, 1.0 - exp(fade * fade * -5.541263545158676));
@@ -101,23 +78,10 @@ class Terrain {
     })
 
     world.scene.add(_group)
-    lightmap.depthScene.add(_depthGroup)
-    lightmap.updateScene.add(_updateGroup)
-    _updateGroup.frustumCulled = false
-  }
-
-  def toggleRenderTextureMap {
-    var uniform = _material.uniforms.renderTextureMap
-    uniform.value = !uniform.value
   }
 
   def toggleRenderFog {
     var uniform = _material.uniforms.renderFog
-    uniform.value = !uniform.value
-  }
-
-  def toggleRenderOcclusion {
-    var uniform = _material.uniforms.renderOcclusion
     uniform.value = !uniform.value
   }
 
@@ -128,7 +92,7 @@ class Terrain {
   def _update(camera dynamic) {
     _frustum.setFromMatrix(_matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
 
-    var maxCenterDistance = _drawDistance + Math.sqrt(Chunk.SIZE_X * Chunk.SIZE_X + Chunk.SIZE_Y * Chunk.SIZE_Y + Chunk.SIZE_Z * Chunk.SIZE_Z) / 2
+    var maxCenterDistance = DRAW_DISTANCE + Math.sqrt(Chunk.SIZE_X * Chunk.SIZE_X + Chunk.SIZE_Y * Chunk.SIZE_Y + Chunk.SIZE_Z * Chunk.SIZE_Z) / 2
     var eye = camera.position
 
     var xmin = Math.floor((eye.x - maxCenterDistance) / Chunk.SIZE_X) as int
@@ -174,7 +138,7 @@ class Terrain {
           var chunk = _chunkMap.get(key, null)
 
           if chunk == null {
-            chunk = Chunk.new(self, _group, _depthGroup, _updateGroup, _material, startX, startY, startZ)
+            chunk = Chunk.new(self, _group, _material, startX, startY, startZ)
             chunk.generate
             _chunkMap[key] = chunk
             _chunkList.append(chunk)
@@ -197,7 +161,7 @@ class Terrain {
 
           if chunk.isInvalid {
             var isInView = _frustum.intersectsBox(_box)
-            var score = isInView ? _drawDistance - centerDistance : -centerDistance
+            var score = isInView ? DRAW_DISTANCE - centerDistance : -centerDistance
 
             if score > bestScore {
               bestChunk = chunk
@@ -214,38 +178,12 @@ class Terrain {
     }
   }
 
-  def lightmap Lightmap {
-    return _lightmap
-  }
-
-  def drawDistance double {
-    return _drawDistance
-  }
-
-  def quadCount int {
-    var total = 0
-    for chunk in _chunkList {
-      total += chunk.quadCount
-    }
-    return total
-  }
-
   def tick(seconds double, camera dynamic, renderer dynamic) {
-    # Adjust the draw distance to maintain a good frame rate
-    _averageFPS = _averageFPS * 0.95 + 0.05 / seconds
-    _drawDistance = Math.max(MIN_DRAW_DISTANCE, Math.min(MAX_DRAW_DISTANCE, _drawDistance + (_averageFPS - TARGET_FPS) * seconds))
-
     _update(camera)
 
     var uniforms = _material.uniforms
-    uniforms.drawDistance.value = _drawDistance
     uniforms.randomSeed.value = Math.random
     uniforms.rayLight.value.copy(_world.light.position)
-
-    # Only update the lightmap if it's currently being used
-    if uniforms.renderOcclusion.value {
-      lightmap.render(renderer, self, _world.light.position)
-    }
   }
 
   def get(x int, y int, z int) Cell {
@@ -343,9 +281,7 @@ class Terrain {
 }
 
 namespace Terrain {
-  const TARGET_FPS = 25
-  const MIN_DRAW_DISTANCE = 64.0
-  const MAX_DRAW_DISTANCE = 128.0
+  const DRAW_DISTANCE = 128.0
 
   def distance(x1 double, y1 double, z1 double, x2 double, y2 double, z2 double) double {
     x1 -= x2

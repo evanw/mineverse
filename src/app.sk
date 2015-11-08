@@ -25,20 +25,8 @@ class App {
     return _renderer.domElement
   }
 
-  def toggleRenderTextureMap {
-    _world.terrain.toggleRenderTextureMap
-  }
-
-  def toggleRenderGodrays {
-    _screen.toggleRenderGodrays
-  }
-
   def toggleRenderFog {
     _world.terrain.toggleRenderFog
-  }
-
-  def toggleRenderOcclusion {
-    _world.terrain.toggleRenderOcclusion
   }
 
   def resize(width int, height int) {
@@ -102,10 +90,7 @@ class App {
   }
 
   def title string {
-    return
-      Math.round(_fps).toString + " fps" +
-      "/" + Math.round(_world.terrain.drawDistance).toString + " units" +
-      "/" + _world.terrain.quadCount.toString + " quads"
+    return Math.round(_fps).toString + " fps"
   }
 }
 
