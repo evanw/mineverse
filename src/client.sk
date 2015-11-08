@@ -1,20 +1,40 @@
 if BUILD == .CLIENT {
   class Client {
+    var _host string
     var _socket dynamic
+    var _isConnected = false
 
-    def new {
+    def new(host string) {
+      _host = host
       _createSocket
       _bindEvents
     }
 
     def _createSocket {
-      _socket = WebSocket.new("ws://" + location.hostname + ":8080/")
+      _socket = WebSocket.new("ws://" + _host + ":8080/")
+
       _socket.onopen = => {
-        console.log("opened")
-        _socket.send("test")
+        if !_isConnected {
+          _isConnected = true
+          _handleNetworkConnect
+        }
       }
+
       _socket.onmessage = e => {
-        console.log(e.data)
+        if _isConnected {
+          _handleNetworkMessage(e.data)
+        }
+      }
+
+      _socket.onclose = => {
+        _socket = null
+        if _isConnected {
+          _isConnected = false
+          _handleNetworkDisconnect
+        }
+
+        # If the socket is disconnected, periodically try to reconnect
+        setTimeout(=> _createSocket, 250)
       }
     }
 
@@ -109,6 +129,18 @@ if BUILD == .CLIENT {
       window.onmousemove = mousemove
       window.onwheel = wheel
     }
+
+    def _handleNetworkConnect {
+      console.log("_handleNetworkConnect")
+    }
+
+    def _handleNetworkMessage(data dynamic) {
+      console.log("_handleNetworkMessage", data)
+    }
+
+    def _handleNetworkDisconnect {
+      console.log("_handleNetworkDisconnect")
+    }
   }
 
   namespace Client {
@@ -118,6 +150,7 @@ if BUILD == .CLIENT {
 
   @entry
   def main {
-    Client.new
+    var host = location.hostname
+    Client.new(host)
   }
 }

@@ -17,4 +17,10 @@ def assert(truth bool)
   const THREE dynamic
   const WebSocket dynamic
   const location dynamic
+
+  def setTimeout(callback fn(), milliseconds int) int
+  def clearTimeout(interval int)
+
+  def setInterval(callback fn(), milliseconds int) int
+  def clearInterval(interval int)
 }
