@@ -4,14 +4,19 @@ if BUILD == .CLIENT {
     var _socket dynamic
     var _isConnected = false
 
-    def new(host string) {
-      _host = host
-      _createSocket
+    def new {
       _bindEvents
+
+      # Allow the IP to be configured by creating a file called "netconfig.txt" in the "www" folder with the ip:port to connect to
+      fetch("netconfig.txt", data => {
+        _host = "ws://" + (data ?? location.hostname + ":8080").trim() + "/"
+        console.log("connecting to", _host)
+        _createSocket
+      })
     }
 
     def _createSocket {
-      _socket = WebSocket.new("ws://" + _host + ":8080/")
+      _socket = WebSocket.new(_host)
 
       _socket.onopen = => {
         if !_isConnected {
@@ -45,7 +50,6 @@ if BUILD == .CLIENT {
       var keys IntMap<int> = {}
       var app = App.new
       var element = app.element
-      var tick fn()
       var blur = => {
         keys = {}
         pressed = false
@@ -84,7 +88,7 @@ if BUILD == .CLIENT {
           Math.round(window.innerWidth * ratio) as int,
           Math.round(window.innerHeight * ratio) as int)
       }
-      tick = => {
+      var tick fn() = => {
         var newTime double = window.performance.now()
         var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
         oldTime = newTime
@@ -151,13 +155,21 @@ if BUILD == .CLIENT {
   }
 
   namespace Client {
+    def fetch(url string, callback fn(string)) {
+      var xhr = XMLHttpRequest.new
+      xhr.onloadend = => callback(xhr.status == 200 ? xhr.responseText : null)
+      xhr.open("GET", url)
+      xhr.send
+    }
+  }
+
+  namespace Client {
     const SHIFT_KEY = 16
     const SPACEBAR_KEY = 32
   }
 
   @entry
   def main {
-    var host = location.hostname
-    Client.new(host)
+    Client.new
   }
 }

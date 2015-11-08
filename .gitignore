@@ -1,3 +1,4 @@
 .DS_Store
 /www/*.js
+/www/netconfig.txt
 /node_modules/
