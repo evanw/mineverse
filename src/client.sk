@@ -130,8 +130,15 @@ if BUILD == .CLIENT {
       window.onwheel = wheel
     }
 
+    def _send(data dynamic) {
+      if _socket != null && _isConnected {
+        _socket.send(data)
+      }
+    }
+
     def _handleNetworkConnect {
       console.log("_handleNetworkConnect")
+      _send("hello: client to server")
     }
 
     def _handleNetworkMessage(data dynamic) {

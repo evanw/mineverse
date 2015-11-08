@@ -2,20 +2,55 @@ if BUILD == .SERVER {
   @import
   def require(name string) dynamic
 
+  class ClientConnection {
+    var socket dynamic
+  }
+
   class Server {
+    var _clients List<ClientConnection> = []
+
     def new {
+      _createSocket
+    }
+
+    def _createSocket {
       var WebSocketServer = require("ws").Server
       var wss = WebSocketServer.new({"port": 8080})
 
       wss.on("connection", ws => {
-        console.log("client connected")
+        var client = ClientConnection.new(ws)
+        _clients.appendOne(client)
         ws.on("message", message => {
-          console.log("received:", message)
+          _handleNetworkMessage(client, message)
         })
-        ws.send("something")
+        ws.on("close", => {
+          client.socket = null
+          _clients.removeOne(client)
+          _handleNetworkDisconnect(client)
+        })
+        _handleNetworkConnect(client)
       })
 
       console.log("listening for websocket connections")
+    }
+
+    def _send(client ClientConnection, data dynamic) {
+      if client.socket != null {
+        client.socket.send(data)
+      }
+    }
+
+    def _handleNetworkConnect(client ClientConnection) {
+      console.log("_handleNetworkConnect")
+      _send(client, "hello: server to client")
+    }
+
+    def _handleNetworkMessage(client ClientConnection, data dynamic) {
+      console.log("_handleNetworkMessage", data)
+    }
+
+    def _handleNetworkDisconnect(client ClientConnection) {
+      console.log("_handleNetworkDisconnect")
     }
   }
 
