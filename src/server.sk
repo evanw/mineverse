@@ -1,0 +1,26 @@
+if BUILD == .SERVER {
+  @import
+  def require(name string) dynamic
+
+  class Server {
+    def new {
+      var WebSocketServer = require("ws").Server
+      var wss = WebSocketServer.new({"port": 8080})
+
+      wss.on("connection", ws => {
+        console.log("client connected")
+        ws.on("message", message => {
+          console.log("received:", message)
+        })
+        ws.send("something")
+      })
+
+      console.log("listening for websocket connections")
+    }
+  }
+
+  @entry
+  def main {
+    Server.new
+  }
+}

@@ -1,5 +1,5 @@
-BUILD_CLIENT = node_modules/.bin/skewc src/*.sk --target=js --output-file=www/compiled.js
-BUILD_SERVER = node_modules/.bin/skewc src/*.sk --target=js --output-file=www/server.js --define:BUILD=SERVER
+BUILD_CLIENT = node_modules/.bin/skewc src/*.sk --target=js --define:BUILD=CLIENT --output-file=www/client.js
+BUILD_SERVER = node_modules/.bin/skewc src/*.sk --target=js --define:BUILD=SERVER --output-file=www/server.js
 
 debug: | node_modules
 	$(BUILD_CLIENT) --inline-functions

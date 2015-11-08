@@ -1,0 +1,123 @@
+if BUILD == .CLIENT {
+  class Client {
+    var _socket dynamic
+
+    def new {
+      _createSocket
+      _bindEvents
+    }
+
+    def _createSocket {
+      _socket = WebSocket.new("ws://" + location.hostname + ":8080/")
+      _socket.onopen = => {
+        console.log("opened")
+        _socket.send("test")
+      }
+      _socket.onmessage = e => {
+        console.log(e.data)
+      }
+    }
+
+    def _bindEvents {
+      var oldTime = 0.0
+      var pressed = false
+      var oldMouse dynamic = null
+      var keys IntMap<int> = {}
+      var app = App.new
+      var element = app.element
+      var tick fn()
+      var blur = => {
+        keys = {}
+        pressed = false
+      }
+      var keydown = (e dynamic) => {
+        keys[e.which] = 1
+        if e.which == 'F' { app.toggleRenderFog }
+      }
+      var keyup = (e dynamic) => {
+        keys[e.which] = 0
+      }
+      var wheel = (e dynamic) => {
+        if !e.ctrlKey {
+          app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
+        }
+        e.preventDefault()
+      }
+      var mousedown = (e dynamic) => {
+        pressed = true
+        e.preventDefault()
+      }
+      var mouseup = => {
+        pressed = false
+      }
+      var mousemove = (e dynamic) => {
+        if pressed {
+          var deltaX = oldMouse != null ? e.pageX - oldMouse.pageX : 0
+          var deltaY = oldMouse != null ? e.pageY - oldMouse.pageY : 0
+          app.rotateCamera(deltaX * (Math.PI / 400), deltaY * (Math.PI / 400))
+        }
+        oldMouse = e
+      }
+      var resize = => {
+        var ratio = window.devicePixelRatio
+        app.resize(
+          Math.round(window.innerWidth * ratio) as int,
+          Math.round(window.innerHeight * ratio) as int)
+      }
+      tick = => {
+        var newTime double = window.performance.now()
+        var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
+        oldTime = newTime
+
+        var deltaX = keys.get('D', 0) - keys.get('A', 0)
+        var deltaY = keys.get('S', 0) - keys.get('W', 0)
+        app.moveCamera(deltaX, deltaY, seconds, keys.get(SPACEBAR_KEY, 0) != 0, keys.get(SHIFT_KEY, 0) != 0)
+
+        app.tick(seconds)
+        document.title = app.title
+        window.requestAnimationFrame(tick)
+      }
+      resize()
+      tick()
+
+      var instructions = document.createElement("div")
+      var style = instructions.style
+      style.position = "absolute"
+      style.left = "20px"
+      style.top = "20px"
+      style.padding = "13px 15px"
+      style.background = "rgba(0, 0, 0, 0.5)"
+      style.color = "white"
+      style.pointerEvents = "none"
+      style.whiteSpace = "pre"
+      style.font = "14px/20px sans-serif"
+      style.borderRadius = "5px"
+      instructions.textContent =
+        "W/A/S/D: Move\n" +
+        "Shift: Move fast\n" +
+        "Drag: Rotate\n" +
+        "F: Toggle fog"
+
+      document.body.appendChild(element)
+      document.body.appendChild(instructions)
+      document.onkeydown = keydown
+      document.onkeyup = keyup
+      window.onblur = blur
+      window.onresize = resize
+      window.onmousedown = mousedown
+      window.onmouseup = mouseup
+      window.onmousemove = mousemove
+      window.onwheel = wheel
+    }
+  }
+
+  namespace Client {
+    const SHIFT_KEY = 16
+    const SPACEBAR_KEY = 32
+  }
+
+  @entry
+  def main {
+    Client.new
+  }
+}
