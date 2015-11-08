@@ -1,58 +1,70 @@
-@entry
-def main {
-  const FRAME_SKIP_COUNT = 1 # 30 fps is better than a ragged 60fps since Chrome drops frames sometimes anyway
-  const SHIFT_KEY = 16
-  const SPACEBAR_KEY = 32
+enum Build {
+  CLIENT
+  SERVER
+}
 
-  var oldTime = 0.0
-  var pressed = false
-  var oldMouse dynamic = null
-  var keys IntMap<int> = {}
-  var app = App.new
-  var element = app.element
-  var tick fn()
-  var blur = => {
-    keys = {}
-    pressed = false
-  }
-  var keydown = (e dynamic) => {
-    keys[e.which] = 1
-    if e.which == 'F' { app.toggleRenderFog }
-  }
-  var keyup = (e dynamic) => {
-    keys[e.which] = 0
-  }
-  var wheel = (e dynamic) => {
-    if !e.ctrlKey {
-      app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
+const BUILD Build = .CLIENT
+
+if BUILD == .CLIENT {
+  @entry
+  def main {
+    const SHIFT_KEY = 16
+    const SPACEBAR_KEY = 32
+
+    var socket = WebSocket.new("ws://" + location.hostname + ":8080/")
+    socket.onopen = => {
+      console.log("opened")
+      socket.send("test")
     }
-    e.preventDefault()
-  }
-  var mousedown = (e dynamic) => {
-    pressed = true
-    e.preventDefault()
-  }
-  var mouseup = => {
-    pressed = false
-  }
-  var mousemove = (e dynamic) => {
-    if pressed {
-      var deltaX = oldMouse != null ? e.pageX - oldMouse.pageX : 0
-      var deltaY = oldMouse != null ? e.pageY - oldMouse.pageY : 0
-      app.rotateCamera(deltaX * (Math.PI / 400), deltaY * (Math.PI / 400))
+    socket.onmessage = e => {
+      console.log(e.data)
     }
-    oldMouse = e
-  }
-  var resize = => {
-    var ratio = window.devicePixelRatio
-    app.resize(
-      Math.round(window.innerWidth * ratio) as int,
-      Math.round(window.innerHeight * ratio) as int)
-  }
-  var count = 0
-  tick = => {
-    count++
-    if count % (1 + FRAME_SKIP_COUNT) == 0 {
+    var oldTime = 0.0
+    var pressed = false
+    var oldMouse dynamic = null
+    var keys IntMap<int> = {}
+    var app = App.new
+    var element = app.element
+    var tick fn()
+    var blur = => {
+      keys = {}
+      pressed = false
+    }
+    var keydown = (e dynamic) => {
+      keys[e.which] = 1
+      if e.which == 'F' { app.toggleRenderFog }
+    }
+    var keyup = (e dynamic) => {
+      keys[e.which] = 0
+    }
+    var wheel = (e dynamic) => {
+      if !e.ctrlKey {
+        app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
+      }
+      e.preventDefault()
+    }
+    var mousedown = (e dynamic) => {
+      pressed = true
+      e.preventDefault()
+    }
+    var mouseup = => {
+      pressed = false
+    }
+    var mousemove = (e dynamic) => {
+      if pressed {
+        var deltaX = oldMouse != null ? e.pageX - oldMouse.pageX : 0
+        var deltaY = oldMouse != null ? e.pageY - oldMouse.pageY : 0
+        app.rotateCamera(deltaX * (Math.PI / 400), deltaY * (Math.PI / 400))
+      }
+      oldMouse = e
+    }
+    var resize = => {
+      var ratio = window.devicePixelRatio
+      app.resize(
+        Math.round(window.innerWidth * ratio) as int,
+        Math.round(window.innerHeight * ratio) as int)
+    }
+    tick = => {
       var newTime double = window.performance.now()
       var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
       oldTime = newTime
@@ -63,38 +75,59 @@ def main {
 
       app.tick(seconds)
       document.title = app.title
+      window.requestAnimationFrame(tick)
     }
-    window.requestAnimationFrame(tick)
+    resize()
+    tick()
+
+    var instructions = document.createElement("div")
+    var style = instructions.style
+    style.position = "absolute"
+    style.left = "20px"
+    style.top = "20px"
+    style.padding = "13px 15px"
+    style.background = "rgba(0, 0, 0, 0.5)"
+    style.color = "white"
+    style.pointerEvents = "none"
+    style.whiteSpace = "pre"
+    style.font = "14px/20px sans-serif"
+    style.borderRadius = "5px"
+    instructions.textContent =
+      "W/A/S/D: Move\n" +
+      "Shift: Move fast\n" +
+      "Drag: Rotate\n" +
+      "F: Toggle fog"
+
+    document.body.appendChild(element)
+    document.body.appendChild(instructions)
+    document.onkeydown = keydown
+    document.onkeyup = keyup
+    window.onblur = blur
+    window.onresize = resize
+    window.onmousedown = mousedown
+    window.onmouseup = mouseup
+    window.onmousemove = mousemove
+    window.onwheel = wheel
   }
-  resize()
-  tick()
+}
 
-  var instructions = document.createElement("div")
-  var style = instructions.style
-  style.position = "absolute"
-  style.left = "20px"
-  style.top = "20px"
-  style.padding = "13px 15px"
-  style.background = "rgba(0, 0, 0, 0.5)"
-  style.color = "white"
-  style.pointerEvents = "none"
-  style.whiteSpace = "pre"
-  style.font = "14px/20px sans-serif"
-  style.borderRadius = "5px"
-  instructions.textContent =
-    "W/A/S/D: Move\n" +
-    "Shift: Move fast\n" +
-    "Drag: Rotate\n" +
-    "F: Toggle fog"
+else if BUILD == .SERVER {
+  @import
+  def require(name string) dynamic
 
-  document.body.appendChild(element)
-  document.body.appendChild(instructions)
-  document.onkeydown = keydown
-  document.onkeyup = keyup
-  window.onblur = blur
-  window.onresize = resize
-  window.onmousedown = mousedown
-  window.onmouseup = mouseup
-  window.onmousemove = mousemove
-  window.onwheel = wheel
+  @entry
+  def main {
+    var WebSocketServer = require("ws").Server
+    var wss = WebSocketServer.new({"port": 8080})
+
+    wss.on("connection", ws => {
+      console.log("client connected")
+      ws.on("message", message => {
+        console.log("received:", message)
+      })
+      ws.send("something")
+    })
+
+    console.log("listening for websocket connections")
+  }
 }

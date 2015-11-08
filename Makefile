@@ -1,13 +1,17 @@
-BUILD = node_modules/.bin/skewc src/*.sk --target=js --output-file=www/compiled.js
+BUILD_CLIENT = node_modules/.bin/skewc src/*.sk --target=js --output-file=www/compiled.js
+BUILD_SERVER = node_modules/.bin/skewc src/*.sk --target=js --output-file=www/server.js --define:BUILD=SERVER
 
 debug: | node_modules
-	$(BUILD) --inline-functions
+	$(BUILD_CLIENT) --inline-functions
+	$(BUILD_SERVER) --inline-functions
 
 profile: | node_modules
-	$(BUILD) --inline-functions --fold-constants --globalize-functions --define:PROFILE=true
+	$(BUILD_CLIENT) --inline-functions --fold-constants --globalize-functions --define:PROFILE=true
+	$(BUILD_SERVER) --inline-functions --fold-constants --globalize-functions --define:PROFILE=true
 
 release: | node_modules
-	$(BUILD) --release
+	$(BUILD_CLIENT) --release
+	$(BUILD_SERVER) --release
 
 watch: | node_modules
 	node_modules/.bin/watch src 'clear && make debug && echo done'

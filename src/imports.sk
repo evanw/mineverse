@@ -4,7 +4,10 @@ const PROFILE = false
 def assert(truth bool)
 
 @import {
+  const console dynamic
   const window dynamic
   const document dynamic
   const THREE dynamic
+  const WebSocket dynamic
+  const location dynamic
 }
