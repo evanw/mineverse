@@ -40,6 +40,18 @@ if BUILD == .SERVER {
       }
     }
 
+    def _broadcastToAll(data dynamic) {
+      _broadcastToAllExcept(data, null)
+    }
+
+    def _broadcastToAllExcept(data dynamic, ignore ClientConnection) {
+      for client in _clients {
+        if client != ignore {
+          _send(client, data)
+        }
+      }
+    }
+
     def _handleNetworkConnect(client ClientConnection) {
       console.log("_handleNetworkConnect")
       _send(client, "hello: server to client")
