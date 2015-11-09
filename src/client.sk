@@ -1,10 +1,12 @@
 if BUILD == .CLIENT {
-  class Client {
+  class Client :: ServerToClient {
     var _host string
     var _socket dynamic
     var _isConnected = false
+    var _decoder ServerToClientDecoder = null
 
     def new {
+      _decoder = ServerToClientDecoder.new(self)
       _bindEvents
 
       # Allow the IP to be configured by creating a file called "netconfig.txt" in the "www" folder with the ip:port to connect to
@@ -141,16 +143,31 @@ if BUILD == .CLIENT {
     }
 
     def _handleNetworkConnect {
-      console.log("_handleNetworkConnect")
-      _send("hello: client to server")
+      console.log("connected to server")
     }
 
-    def _handleNetworkMessage(data dynamic) {
-      console.log("_handleNetworkMessage", data)
+    def _handleNetworkMessage(data string) {
+      _decoder.handleMessage(data)
     }
 
     def _handleNetworkDisconnect {
-      console.log("_handleNetworkDisconnect")
+      console.log("disconnected from server")
+    }
+
+    def handleSelfConnectMessage(selfClientID int) {
+      console.log("connected with id", selfClientID)
+    }
+
+    def handlePeerConnectMessage(peerClientID int) {
+      console.log("other client", peerClientID, "connected")
+    }
+
+    def handlePeerDisconnectMessage(peerClientID int) {
+      console.log("other client", peerClientID, "disconnected")
+    }
+
+    def handlePeerUpdatePositionMessage(peerClientID int, x double, y double, z double) {
+      console.log("other client", peerClientID, "moved to", x, y, z)
     }
   }
 

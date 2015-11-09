@@ -1,0 +1,105 @@
+################################################################################
+# RPC messages
+
+interface ServerToClient {
+  def handleSelfConnectMessage(selfClientID int)
+  def handlePeerConnectMessage(peerClientID int)
+  def handlePeerDisconnectMessage(peerClientID int)
+  def handlePeerUpdatePositionMessage(peerClientID int, x double, y double, z double)
+}
+
+interface ClientToServer {
+  def handleUpdatePositionMessage(x double, y double, z double)
+}
+
+################################################################################
+# Encoders
+
+class ServerToClientEncoder :: ServerToClient {
+  const _send fn(string)
+
+  def handleSelfConnectMessage(selfClientID int) {
+    _send(JSON.stringify({
+      "type": "self-connect",
+      "selfClientID": selfClientID,
+    }))
+  }
+
+  def handlePeerConnectMessage(peerClientID int) {
+    _send(JSON.stringify({
+      "type": "peer-connect",
+      "peerClientID": peerClientID,
+    }))
+  }
+
+  def handlePeerDisconnectMessage(peerClientID int) {
+    _send(JSON.stringify({
+      "type": "peer-disconnect",
+      "peerClientID": peerClientID,
+    }))
+  }
+
+  def handlePeerUpdatePositionMessage(peerClientID int, x double, y double, z double) {
+    _send(JSON.stringify({
+      "type": "peer-update-position",
+      "peerClientID": peerClientID,
+      "x": x,
+      "y": y,
+      "z": z,
+    }))
+  }
+}
+
+class ClientToServerEncoder :: ClientToServer {
+  const _send fn(string)
+
+  def handleUpdatePositionMessage(x double, y double, z double) {
+    _send(JSON.stringify({
+      "type": "update-position",
+      "x": x,
+      "y": y,
+      "z": z,
+    }))
+  }
+}
+
+################################################################################
+# Decoders
+
+class ServerToClientDecoder {
+  const _send ServerToClient
+
+  def handleMessage(data string) {
+    var json = JSON.parse(data)
+    switch json.type {
+      case "self-connect" {
+        _send.handleSelfConnectMessage(json.selfClientID)
+      }
+
+      case "peer-connect" {
+        _send.handlePeerConnectMessage(json.peerClientID)
+      }
+
+      case "peer-disconnect" {
+        _send.handlePeerDisconnectMessage(json.peerClientID)
+      }
+
+      case "peer-update-position" {
+        _send.handlePeerUpdatePositionMessage(json.peerClientID, json.x, json.y, json.z)
+      }
+    }
+  }
+}
+
+class ClientToServerDecoder {
+  const _send ClientToServer
+
+  def handleMessage(data string) {
+    var json = JSON.parse(data)
+    switch json.type {
+      case "update-position" {
+        _send.handleUpdatePositionMessage(json.x, json.y, json.z)
+      }
+    }
+  }
+}

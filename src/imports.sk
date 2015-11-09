@@ -24,6 +24,11 @@ def assert(truth bool)
   def setInterval(callback fn(), milliseconds int) int
   def clearInterval(interval int)
 
+  namespace JSON {
+    def parse(text string) dynamic
+    def stringify(value dynamic) string
+  }
+
   class XMLHttpRequest {
     def new
     def getResponseHeader(key string) string

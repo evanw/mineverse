@@ -2,8 +2,51 @@ if BUILD == .SERVER {
   @import
   def require(name string) dynamic
 
-  class ClientConnection {
-    var socket dynamic
+  class ClientConnection :: ClientToServer {
+    const _id = _nextID++
+    var _server Server
+    var _socket dynamic
+    var _encoder ServerToClientEncoder = null
+    var _decoder ClientToServerDecoder = null
+
+    def new(server Server, socket dynamic) {
+      console.log("client", _id, "connected")
+
+      _server = server
+      _socket = socket
+      _encoder = ServerToClientEncoder.new(data => {
+        if _socket != null {
+          _socket.send(data)
+        }
+      })
+      _decoder = ClientToServerDecoder.new(self)
+      _encoder.handleSelfConnectMessage(_id)
+      _server.forOtherClients(self, client => {
+        _encoder.handlePeerConnectMessage(client._id)
+        client._encoder.handlePeerConnectMessage(_id)
+      })
+    }
+
+    def handleNetworkMessage(data string) {
+      _decoder.handleMessage(data)
+    }
+
+    def handleNetworkDisconnect {
+      console.log("client", _id, "disconnected")
+
+      _socket = null
+      _server.forOtherClients(self, client => client._encoder.handlePeerDisconnectMessage(_id))
+    }
+
+    def handleUpdatePositionMessage(x double, y double, z double) {
+      console.log("client", _id, "moved to", x, y, z)
+
+      _server.forOtherClients(self, client => client._encoder.handlePeerUpdatePositionMessage(_id, x, y, z))
+    }
+  }
+
+  namespace ClientConnection {
+    var _nextID = 0
   }
 
   class Server {
@@ -13,56 +56,31 @@ if BUILD == .SERVER {
       _createSocket
     }
 
+    def forOtherClients(ignore ClientConnection, callback fn(ClientConnection)) {
+      for client in _clients {
+        if client != ignore {
+          callback(client)
+        }
+      }
+    }
+
     def _createSocket {
       var WebSocketServer = require("ws").Server
       var wss = WebSocketServer.new({"port": 8080})
 
       wss.on("connection", ws => {
-        var client = ClientConnection.new(ws)
+        var client = ClientConnection.new(self, ws)
         _clients.appendOne(client)
         ws.on("message", message => {
-          _handleNetworkMessage(client, message)
+          client.handleNetworkMessage(message)
         })
         ws.on("close", => {
-          client.socket = null
           _clients.removeOne(client)
-          _handleNetworkDisconnect(client)
+          client.handleNetworkDisconnect
         })
-        _handleNetworkConnect(client)
       })
 
       console.log("listening for websocket connections")
-    }
-
-    def _send(client ClientConnection, data dynamic) {
-      if client.socket != null {
-        client.socket.send(data)
-      }
-    }
-
-    def _broadcastToAll(data dynamic) {
-      _broadcastToAllExcept(data, null)
-    }
-
-    def _broadcastToAllExcept(data dynamic, ignore ClientConnection) {
-      for client in _clients {
-        if client != ignore {
-          _send(client, data)
-        }
-      }
-    }
-
-    def _handleNetworkConnect(client ClientConnection) {
-      console.log("_handleNetworkConnect")
-      _send(client, "hello: server to client")
-    }
-
-    def _handleNetworkMessage(client ClientConnection, data dynamic) {
-      console.log("_handleNetworkMessage", data)
-    }
-
-    def _handleNetworkDisconnect(client ClientConnection) {
-      console.log("_handleNetworkDisconnect")
     }
   }
 
