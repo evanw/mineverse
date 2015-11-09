@@ -1,11 +1,18 @@
 if BUILD == .CLIENT {
   class Client :: ServerToClient {
+    var _app = App.new
     var _host string
     var _socket dynamic
     var _isConnected = false
+    var _encoder ClientToServerEncoder = null
     var _decoder ServerToClientDecoder = null
 
     def new {
+      _encoder = ClientToServerEncoder.new(data => {
+        if _socket != null && _isConnected {
+          _socket.send(data)
+        }
+      })
       _decoder = ServerToClientDecoder.new(self)
       _bindEvents
 
@@ -50,22 +57,21 @@ if BUILD == .CLIENT {
       var pressed = false
       var oldMouse dynamic = null
       var keys IntMap<bool> = {}
-      var app = App.new
-      var element = app.element
+      var element = _app.element
       var blur = => {
         keys = {}
         pressed = false
       }
       var keydown = (e dynamic) => {
         keys[e.which] = true
-        if e.which == 'F' { app.toggleRenderFog }
+        if e.which == 'F' { _app.toggleRenderFog }
       }
       var keyup = (e dynamic) => {
         keys[e.which] = false
       }
       var wheel = (e dynamic) => {
         if !e.ctrlKey {
-          app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
+          _app.rotateCamera(e.deltaX * -(Math.PI / 400), e.deltaY * -(Math.PI / 400)) # OS X trackpad
         }
         e.preventDefault()
       }
@@ -80,13 +86,13 @@ if BUILD == .CLIENT {
         if pressed {
           var deltaX = oldMouse != null ? e.pageX - oldMouse.pageX : 0
           var deltaY = oldMouse != null ? e.pageY - oldMouse.pageY : 0
-          app.rotateCamera(deltaX * (Math.PI / 400), deltaY * (Math.PI / 400))
+          _app.rotateCamera(deltaX * (Math.PI / 400), deltaY * (Math.PI / 400))
         }
         oldMouse = e
       }
       var resize = => {
         var ratio = window.devicePixelRatio
-        app.resize(
+        _app.resize(
           Math.round(window.innerWidth * ratio) as int,
           Math.round(window.innerHeight * ratio) as int)
       }
@@ -95,7 +101,8 @@ if BUILD == .CLIENT {
         var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
         oldTime = newTime
 
-        app.world.player.setKeys(
+        var player = _app.world.player
+        player.setKeys(
           keys.get('A', false),
           keys.get('W', false),
           keys.get('D', false),
@@ -103,8 +110,10 @@ if BUILD == .CLIENT {
           keys.get(SPACEBAR_KEY, false),
           keys.get(SHIFT_KEY, false))
 
-        app.tick(seconds)
-        document.title = app.title
+        _app.tick(seconds)
+        _encoder.handleUpdatePositionMessage(player.aabb.center.x, player.aabb.center.y, player.aabb.center.z)
+
+        document.title = _app.title
         window.requestAnimationFrame(tick)
       }
       resize()
@@ -140,12 +149,6 @@ if BUILD == .CLIENT {
       window.onwheel = wheel
     }
 
-    def _send(data dynamic) {
-      if _socket != null && _isConnected {
-        _socket.send(data)
-      }
-    }
-
     def _handleNetworkConnect {
       console.log("connected to server")
     }
@@ -160,18 +163,36 @@ if BUILD == .CLIENT {
 
     def handleSelfConnectMessage(selfClientID int) {
       console.log("connected with id", selfClientID)
+      _app.world.player.id = selfClientID
     }
 
     def handlePeerConnectMessage(peerClientID int) {
       console.log("other client", peerClientID, "connected")
+
+      var player = Player.new(_app.world)
+      player.id = peerClientID
+      _app.world.add(player)
     }
 
     def handlePeerDisconnectMessage(peerClientID int) {
       console.log("other client", peerClientID, "disconnected")
+
+      for entity in _app.world.entities {
+        if entity is Player && (entity as Player).id == peerClientID {
+          _app.world.remove(entity)
+          break
+        }
+      }
     }
 
     def handlePeerUpdatePositionMessage(peerClientID int, x double, y double, z double) {
       console.log("other client", peerClientID, "moved to", x, y, z)
+
+      for entity in _app.world.entities {
+        if entity is Player && (entity as Player).id == peerClientID {
+          (entity as Player).aabb.center.set(x, y, z)
+        }
+      }
     }
   }
 
