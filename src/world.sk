@@ -31,6 +31,7 @@ class World {
 
   def remove(entity Entity) {
     entities.removeOne(entity)
+    entity.dispose
   }
 
   def moveAABB(aabb AABB, delta dynamic) {

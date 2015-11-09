@@ -9,12 +9,20 @@ class Player : Entity {
   var _down = false
   var _jump = false
   var _speed = false
+  var _mesh dynamic
 
   def new(world World) {
     super(world)
 
     aabb.center.y = 50
     aabb.radius.set(0.4, 0.8, 0.4)
+
+    _mesh = THREE.Mesh.new(
+      THREE.BoxGeometry.new(aabb.radius.x * 2, aabb.radius.y * 2, aabb.radius.z * 2),
+      THREE.MeshBasicMaterial.new({
+        "color": 0x00FF00,
+      }))
+    _world.scene.add(_mesh)
   }
 
   def setKeys(left bool, up bool, right bool, down bool, jump bool, speed bool) {
@@ -24,6 +32,10 @@ class Player : Entity {
     _down = down
     _jump = jump
     _speed = speed
+  }
+
+  over dispose {
+    _world.scene.remove(_mesh)
   }
 
   over tick(seconds double) {
@@ -50,6 +62,7 @@ class Player : Entity {
     }
 
     _world.moveAABB(aabb, _vector3)
+    _mesh.position.copy(aabb.center)
 
     var isOnCeiling = _world.terrain.isOnCeiling(aabb)
     var isOnFloor = _world.terrain.isOnFloor(aabb)

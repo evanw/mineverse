@@ -38,11 +38,12 @@ class App {
 
   def tick(seconds double) {
     _fps = _fps * 0.9 + 0.1 / seconds
+    world.tick(seconds, _renderer)
+
     world.camera.position.copy(world.player.aabb.center)
     world.camera.position.y += 0.4
     world.camera.updateMatrixWorld()
     world.camera.matrixWorldInverse.getInverse(world.camera.matrixWorld)
-    world.tick(seconds, _renderer)
 
     var target = _screen.renderTarget
     _renderer.setViewport(0, 0, target.width, target.height)
