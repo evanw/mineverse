@@ -89,7 +89,8 @@ class Terrain {
     return _chunkList
   }
 
-  def _update(camera dynamic) {
+  def _update {
+    var camera = _world.camera
     _frustum.setFromMatrix(_matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
 
     var maxCenterDistance = DRAW_DISTANCE + Math.sqrt(Chunk.SIZE_X * Chunk.SIZE_X + Chunk.SIZE_Y * Chunk.SIZE_Y + Chunk.SIZE_Z * Chunk.SIZE_Z) / 2
@@ -178,8 +179,8 @@ class Terrain {
     }
   }
 
-  def tick(seconds double, camera dynamic, renderer dynamic) {
-    _update(camera)
+  def tick(seconds double, renderer dynamic) {
+    _update
 
     var uniforms = _material.uniforms
     uniforms.randomSeed.value = Math.random

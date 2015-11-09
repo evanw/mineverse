@@ -49,7 +49,7 @@ if BUILD == .CLIENT {
       var oldTime = 0.0
       var pressed = false
       var oldMouse dynamic = null
-      var keys IntMap<int> = {}
+      var keys IntMap<bool> = {}
       var app = App.new
       var element = app.element
       var blur = => {
@@ -57,11 +57,11 @@ if BUILD == .CLIENT {
         pressed = false
       }
       var keydown = (e dynamic) => {
-        keys[e.which] = 1
+        keys[e.which] = true
         if e.which == 'F' { app.toggleRenderFog }
       }
       var keyup = (e dynamic) => {
-        keys[e.which] = 0
+        keys[e.which] = false
       }
       var wheel = (e dynamic) => {
         if !e.ctrlKey {
@@ -95,9 +95,13 @@ if BUILD == .CLIENT {
         var seconds = Math.min(0.25, (newTime - oldTime) / 1000)
         oldTime = newTime
 
-        var deltaX = keys.get('D', 0) - keys.get('A', 0)
-        var deltaY = keys.get('S', 0) - keys.get('W', 0)
-        app.moveCamera(deltaX, deltaY, seconds, keys.get(SPACEBAR_KEY, 0) != 0, keys.get(SHIFT_KEY, 0) != 0)
+        app.world.player.setKeys(
+          keys.get('A', false),
+          keys.get('W', false),
+          keys.get('D', false),
+          keys.get('S', false),
+          keys.get(SPACEBAR_KEY, false),
+          keys.get(SHIFT_KEY, false))
 
         app.tick(seconds)
         document.title = app.title

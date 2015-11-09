@@ -1,0 +1,5 @@
+class Entity {
+  const _world World
+
+  def tick(seconds double) {}
+}

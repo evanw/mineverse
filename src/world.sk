@@ -8,9 +8,15 @@ class World {
   const terrain Terrain
   const light = THREE.DirectionalLight.new(0xFFFFFF, 1)
   const clearColor = THREE.Color.new(0x7FBFFF)
+  const entities List<Entity> = []
+  const player Player = null
+  const camera = THREE.PerspectiveCamera.new(75, 1, 0.1, 1000)
 
   def new(scene dynamic) {
     self.scene = scene
+
+    player = Player.new(self)
+    add(player)
 
     light.position.set(1, 3, 2)
     light.position.normalize()
@@ -19,11 +25,27 @@ class World {
     terrain = Terrain.new(self)
   }
 
+  def add(entity Entity) {
+    entities.appendOne(entity)
+  }
+
+  def remove(entity Entity) {
+    entities.removeOne(entity)
+  }
+
   def moveAABB(aabb AABB, delta dynamic) {
     terrain.moveAABB(aabb, delta)
   }
 
-  def tick(seconds double, camera dynamic, renderer dynamic) {
-    terrain.tick(seconds, camera, renderer)
+  def tick(seconds double, renderer dynamic) {
+    terrain.tick(seconds, renderer)
+
+    for entity in entities {
+      entity.tick(seconds)
+    }
   }
+}
+
+namespace World {
+  const GRAVITY = 9.8
 }

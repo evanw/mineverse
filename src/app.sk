@@ -1,21 +1,14 @@
 class App {
-  const _axisY = THREE.Vector3.new(0, 1, 0)
-  const _vector3 = THREE.Vector3.new()
+  const world World = null
   const _scene = THREE.Scene.new()
-  const _camera = THREE.PerspectiveCamera.new(75, 1, 0.1, 1000)
   const _renderer = THREE.WebGLRenderer.new()
-  const _world World = null
   const _screen Screen = null
-  const _cameraAABB = AABB.new
   var _fps = 0.0
-  var _velocityY = 0.0
 
   def new {
-    _world = World.new(_scene)
-    _screen = Screen.new(_world)
-    _cameraAABB.center.y = 50
-    _cameraAABB.radius.set(0.4, 0.8, 0.4)
-    _camera.rotation.order = "YXZ"
+    world = World.new(_scene)
+    _screen = Screen.new(world)
+    world.camera.rotation.order = "YXZ"
     _renderer.setClearColor(0, 0)
     _renderer.gammaInput = true
     _renderer.gammaOutput = true
@@ -26,50 +19,18 @@ class App {
   }
 
   def toggleRenderFog {
-    _world.terrain.toggleRenderFog
+    world.terrain.toggleRenderFog
   }
 
   def resize(width int, height int) {
-    _camera.setViewOffset(width, height, 0, 0, width, height)
-    _camera.updateProjectionMatrix()
+    world.camera.setViewOffset(width, height, 0, 0, width, height)
+    world.camera.updateProjectionMatrix()
     _renderer.setSize(width, height, false)
     _screen.resize(width, height)
   }
 
-  def moveCamera(deltaX double, deltaY double, seconds double, jump bool, speed bool) {
-    _vector3.set(0, 0, 0)
-
-    if speed {
-      if deltaX != 0 || deltaY != 0 {
-        _vector3.set(deltaX, 0, deltaY).normalize().multiplyScalar(20 * seconds)
-        _vector3.applyEuler(_camera.rotation)
-      }
-      _velocityY = 0
-    }
-
-    else {
-      if deltaX != 0 || deltaY != 0 {
-        _vector3.set(deltaX, 0, deltaY).normalize().multiplyScalar(4 * seconds)
-        _vector3.applyAxisAngle(_axisY, _camera.rotation.y)
-      }
-      _velocityY -= GRAVITY * seconds
-      _vector3.y = _velocityY * seconds
-    }
-
-    _world.moveAABB(_cameraAABB, _vector3)
-
-    var isOnCeiling = _world.terrain.isOnCeiling(_cameraAABB)
-    var isOnFloor = _world.terrain.isOnFloor(_cameraAABB)
-
-    if jump && isOnFloor {
-      _velocityY = 6
-    } else if isOnCeiling || isOnFloor {
-      _velocityY = 0
-    }
-  }
-
   def rotateCamera(deltaX double, deltaY double) {
-    var rotation = _camera.rotation
+    var rotation = world.camera.rotation
     rotation.x = Math.min(Math.PI / 2, Math.max(-Math.PI / 2, rotation.x - deltaY))
     rotation.y -= deltaX
     rotation.y -= Math.floor(rotation.y / (Math.PI * 2)) * (Math.PI * 2)
@@ -77,23 +38,19 @@ class App {
 
   def tick(seconds double) {
     _fps = _fps * 0.9 + 0.1 / seconds
-    _camera.position.copy(_cameraAABB.center)
-    _camera.position.y += 0.4
-    _camera.updateMatrixWorld()
-    _camera.matrixWorldInverse.getInverse(_camera.matrixWorld)
-    _world.tick(seconds, _camera, _renderer)
+    world.camera.position.copy(world.player.aabb.center)
+    world.camera.position.y += 0.4
+    world.camera.updateMatrixWorld()
+    world.camera.matrixWorldInverse.getInverse(world.camera.matrixWorld)
+    world.tick(seconds, _renderer)
 
     var target = _screen.renderTarget
     _renderer.setViewport(0, 0, target.width, target.height)
-    _renderer.render(_scene, _camera, target)
-    _screen.render(_renderer, _camera)
+    _renderer.render(_scene, world.camera, target)
+    _screen.render(_renderer, world.camera)
   }
 
   def title string {
     return Math.round(_fps).toString + " fps"
   }
-}
-
-namespace App {
-  const GRAVITY = 9.8
 }
