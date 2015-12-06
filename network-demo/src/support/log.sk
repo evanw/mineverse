@@ -1,0 +1,16 @@
+namespace Log {
+  @skip if RELEASE
+  def info(text string) {
+    dynamic.console.log(text)
+  }
+
+  @skip if RELEASE
+  def warning(text string) {
+    dynamic.console.warn(text)
+  }
+
+  @skip if RELEASE
+  def error(text string) {
+    dynamic.console.error(text)
+  }
+}

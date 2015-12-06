@@ -1,0 +1,200 @@
+################################################################################
+# Client to server
+
+enum ClientToServerMessage {
+  UPDATE_SELF
+  SET_TICK_ID
+}
+
+interface ClientToServer {
+  def updateSelf(flags KeyFlags)
+  def setTickID(tickID int)
+}
+
+class ClientToServerEncoder : Encoder :: ClientToServer {
+  def updateSelf(flags KeyFlags) {
+    _data.appendByte(ClientToServerMessage.UPDATE_SELF)
+    _data.appendByte(flags)
+  }
+
+  def setTickID(tickID int) {
+    _data.appendByte(ClientToServerMessage.SET_TICK_ID)
+    _data.appendInt(tickID)
+  }
+}
+
+class ClientToServerDecoder : Decoder {
+  const receiver ClientToServer
+
+  over _decode {
+    while _data.hasMoreToRead {
+      switch _data.readByte as ClientToServerMessage {
+        case .UPDATE_SELF {
+          var flags = _data.readByte as KeyFlags
+          receiver.updateSelf(flags)
+        }
+
+        case .SET_TICK_ID {
+          var tickID = _data.readInt
+          receiver.setTickID(tickID)
+        }
+
+        default {
+          assert(false)
+          return
+        }
+      }
+    }
+  }
+}
+
+################################################################################
+# Server to client
+
+enum ServerToClientMessage {
+  REMOVE_ACTOR
+  SET_LOCAL_CLIENT_ID
+  CREATE_PLAYER
+  UPDATE_PLAYER
+  SET_TICK_ID
+}
+
+interface ServerToClient {
+  def removeActor(id int)
+  def setLocalClientID(id int)
+  def createPlayer(id int)
+  def updatePlayer(id int, position Vector3, velocity Vector3, rotation double)
+  def setTickID(tickID int)
+}
+
+class ServerToClientEncoder : Encoder :: ServerToClient {
+  def removeActor(id int) {
+    _data.appendByte(ServerToClientMessage.REMOVE_ACTOR)
+    _data.appendInt(id)
+  }
+
+  def setLocalClientID(id int) {
+    _data.appendByte(ServerToClientMessage.SET_LOCAL_CLIENT_ID)
+    _data.appendInt(id)
+  }
+
+  def createPlayer(id int) {
+    _data.appendByte(ServerToClientMessage.CREATE_PLAYER)
+    _data.appendInt(id)
+  }
+
+  def updatePlayer(id int, position Vector3, velocity Vector3, rotation double) {
+    _data.appendByte(ServerToClientMessage.UPDATE_PLAYER)
+    _data.appendInt(id)
+    _data.appendVector3(position)
+    _data.appendVector3(velocity)
+    _data.appendFloat(rotation)
+  }
+
+  def setTickID(tickID int) {
+    _data.appendByte(ServerToClientMessage.SET_TICK_ID)
+    _data.appendInt(tickID)
+  }
+}
+
+class ServerToClientDecoder : Decoder {
+  const receiver ServerToClient
+
+  over _decode {
+    while _data.hasMoreToRead {
+      switch _data.readByte as ServerToClientMessage {
+        case .REMOVE_ACTOR {
+          const id = _data.readInt
+          receiver.removeActor(id)
+        }
+
+        case .SET_LOCAL_CLIENT_ID {
+          const id = _data.readInt
+          receiver.setLocalClientID(id)
+        }
+
+        case .CREATE_PLAYER {
+          const id = _data.readInt
+          receiver.createPlayer(id)
+        }
+
+        case .UPDATE_PLAYER {
+          const id = _data.readInt
+          const position = _data.readVector3
+          const velocity = _data.readVector3
+          const rotation = _data.readFloat
+          receiver.updatePlayer(id, position, velocity, rotation)
+        }
+
+        case .SET_TICK_ID {
+          var tickID = _data.readInt
+          receiver.setTickID(tickID)
+        }
+
+        default {
+          assert(false)
+          return
+        }
+      }
+    }
+  }
+}
+
+################################################################################
+# Helpers
+
+class Encoder {
+  const _data = DataArray.new
+
+  def flush Uint8Array {
+    const bytes = Uint8Array.new(_data.bytes)
+    _data.clear
+    return bytes
+  }
+}
+
+class Decoder {
+  const _data = DataArray.new
+
+  def decode(bytes Uint8Array) {
+    if bytes.length != 0 {
+      _data.appendBytes(bytes)
+      assert(_data.hasMoreToRead)
+      _decode
+      assert(!_data.hasMoreToRead)
+      _data.clear
+    }
+  }
+
+  def _decode
+}
+
+class FixedTimer {
+  var secondsSinceLastCallback = 0.0
+  const secondsBetweenCallbacks double
+  const callback fn()
+
+  def add(seconds double) {
+    secondsSinceLastCallback -= seconds
+
+    while secondsSinceLastCallback < 0 {
+      callback()
+      secondsSinceLastCallback += secondsBetweenCallbacks
+    }
+  }
+}
+
+class OneWayChannel {
+  var delayInSeconds double
+  var send fn(Uint8Array) = null
+  var receive fn(Uint8Array) = null
+  var close fn() = null
+
+  def connectTo(channel OneWayChannel) {
+    var delay = (callback fn()) => {
+      dynamic.setTimeout(callback, delayInSeconds * 1000)
+    }
+    send = bytes => delay(=> channel.receive(bytes))
+    channel.send = bytes => delay(=> receive(bytes))
+  }
+}

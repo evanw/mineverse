@@ -1,0 +1,219 @@
+def lerp(a Vector3, b Vector3, t double) Vector3 {
+  return a + (b - a) * t
+}
+
+def lerp(a double, b double, t double) double {
+  return a + (b - a) * t
+}
+
+flags KeyFlags {
+  LEFT
+  FORWARD
+  RIGHT
+  BACKWARD
+  JUMP
+}
+
+################################################################################
+
+# TODO: How to support different state per actor? Subclassing ActorState per actor type?
+class ActorState {
+  var tickID = 0
+  var position = Vector3.new
+  var velocity = Vector3.new
+  var size = Vector3.new
+  var rotation = 0.0
+  var keys KeyFlags = 0
+
+  def copyFrom(state ActorState) {
+    tickID = state.tickID
+    position = state.position.clone
+    velocity = state.velocity.clone
+    size = state.size.clone
+    rotation = state.rotation
+    keys = state.keys
+  }
+
+  def clone ActorState {
+    var state = ActorState.new
+    state.copyFrom(self)
+    return state
+  }
+}
+
+namespace ActorState {
+  def interpolate(a ActorState, b ActorState, tickID int) ActorState {
+    var t = (tickID - a.tickID) as double / (b.tickID - a.tickID)
+    var state = new
+    state.tickID = tickID
+    state.position = lerp(a.position, b.position, t)
+    state.velocity = lerp(a.velocity, b.velocity, t)
+    state.size = lerp(a.size, b.size, t)
+    state.rotation = lerp(a.rotation, b.rotation, t)
+    state.keys = a.keys
+    return state
+  }
+}
+
+################################################################################
+
+class Actor {
+  var id int
+  var gameState GameState
+  var currentState = ActorState.new
+  var stateHistory IntMap<ActorState> = {} # TODO: This needs garbage collection so it's not a memory leak
+
+  def sendCreateToClient(receiver ServerToClient)
+  def sendUpdateToClient(receiver ServerToClient)
+
+  def tickOnClient
+  def tickOnServer
+
+  def findStateForTick(tickID int) ActorState {
+    return stateHistory.get(tickID, null)
+  }
+
+  def findOrCreateStateForTick(tickID int) ActorState {
+    var state = findStateForTick(tickID)
+    if state == null {
+      state = currentState.clone
+      state.tickID = tickID
+      stateHistory[tickID] = state
+    }
+    return state
+  }
+
+  def interpolateStateAt(tickID int) ActorState {
+    var foundLower = false
+    var foundUpper = false
+    var bestLower = 0
+    var bestUpper = 0
+
+    for key in stateHistory.keys {
+      if key <= tickID {
+        if !foundLower || key > bestLower {
+          bestLower = key
+          foundLower = true
+        }
+      } else {
+        if !foundUpper || key < bestUpper {
+          bestUpper = key
+          foundUpper = true
+        }
+      }
+    }
+
+    if foundLower && !foundUpper {
+      var state = findStateForTick(bestLower).clone
+      state.tickID = tickID
+      return state
+    }
+
+    if !foundLower && foundUpper {
+      var state = findStateForTick(bestUpper).clone
+      state.tickID = tickID
+      return state
+    }
+
+    if foundLower && foundUpper {
+      return ActorState.interpolate(findStateForTick(bestLower), findStateForTick(bestUpper), tickID)
+    }
+
+    return ActorState.new
+  }
+}
+
+################################################################################
+
+class Player : Actor {
+  var isLocalPlayer = false
+
+  def setKey(flag KeyFlags, value bool) {
+    currentState.keys = value ? currentState.keys | flag : currentState.keys & ~flag
+  }
+
+  def sendUpdateToServer(receiver ClientToServer) {
+    receiver.updateSelf(currentState.keys)
+  }
+
+  over sendCreateToClient(receiver ServerToClient) {
+    receiver.createPlayer(id)
+    sendUpdateToClient(receiver)
+  }
+
+  over sendUpdateToClient(receiver ServerToClient) {
+    receiver.updatePlayer(id, currentState.position, currentState.velocity, currentState.rotation)
+  }
+
+  over tickOnClient {
+    if isLocalPlayer {
+      tickOnServer
+      return
+    }
+
+    currentState = interpolateStateAt(gameState.currentTickID - Client.TICKS_TO_LAG_PLAYERS_BY)
+  }
+
+  over tickOnServer {
+    currentState.tickID++
+
+    # Take recorded keystate on the server if there is any
+    var state = findStateForTick(currentState.tickID)
+    if state != null {
+      currentState.keys = state.keys
+    }
+
+    # Use the key state to advance the player
+    currentState.velocity.x = 100 * ((.RIGHT in currentState.keys) as int - (.LEFT in currentState.keys) as int)
+    currentState.velocity.y = 100 * ((.FORWARD in currentState.keys) as int - (.BACKWARD in currentState.keys) as int)
+    currentState.position += currentState.velocity * GameState.SECONDS_PER_TICK
+  }
+}
+
+################################################################################
+
+class GameState {
+  const actors List<Actor> = []
+  var currentTickID = 0
+
+  def addActor(actor Actor) {
+    actors.append(actor)
+  }
+
+  def removeActor(actor Actor) {
+    actors.removeOne(actor)
+  }
+
+  def findActor(id int) Actor {
+    for actor in actors {
+      if actor.id == id {
+        return actor
+      }
+    }
+    return null
+  }
+
+  def sendUpdateToClient(receiver ServerToClient) {
+    for actor in actors {
+      actor.sendUpdateToClient(receiver)
+    }
+  }
+
+  def tickOnClient {
+    currentTickID++
+    for actor in actors {
+      actor.tickOnClient
+    }
+  }
+
+  def tickOnServer {
+    currentTickID++
+    for actor in actors {
+      actor.tickOnServer
+    }
+  }
+}
+
+namespace GameState {
+  const SECONDS_PER_TICK = 1.0 / 100
+}

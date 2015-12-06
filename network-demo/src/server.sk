@@ -1,0 +1,95 @@
+class Server {
+  class Client :: ClientToServer {
+    const server Server
+    const playerID int
+    const channel OneWayChannel
+    const encoder = ServerToClientEncoder.new
+    var player Player = null
+    var decoder ClientToServerDecoder = null
+    var messageTickID = 0
+
+    def updateSelf(flags KeyFlags) {
+      player.findOrCreateStateForTick(messageTickID).keys = flags
+    }
+
+    def setTickID(tickID int) {
+      messageTickID = tickID
+    }
+  }
+
+  const state = GameState.new
+  const clients List<Client> = []
+  var sendToClientTimer FixedTimer
+  var tickTimer FixedTimer
+  var nextActorID = 0
+
+  def new {
+    sendToClientTimer = FixedTimer.new(SECONDS_BETWEEN_UPDATES_TO_CLIENT, => _sendToClient)
+    tickTimer = FixedTimer.new(GameState.SECONDS_PER_TICK, => _tick)
+  }
+
+  def addClient(channel OneWayChannel) {
+    var playerID = ++nextActorID
+    var client = Client.new(self, playerID, channel)
+    client.decoder = ClientToServerDecoder.new(client)
+    clients.append(client)
+    channel.receive = bytes => client.decoder.decode(bytes)
+    channel.close = => removeClient(client)
+
+    # Send initial messages for setup
+    client.player = Player.new(playerID, state)
+    client.encoder.setTickID(state.currentTickID)
+    client.encoder.setLocalClientID(playerID)
+    state.actors.append(client.player)
+    for actor in state.actors {
+      actor.sendCreateToClient(client.encoder)
+    }
+
+    # Send initial messages for setup
+    for other in clients {
+      if other != client {
+        other.encoder.setTickID(state.currentTickID)
+        client.player.sendCreateToClient(other.encoder)
+      }
+    }
+  }
+
+  def removeClient(client Client) {
+    clients.removeOne(client)
+
+    # Send removal messages
+    for other in clients {
+      other.encoder.setTickID(state.currentTickID)
+      other.encoder.removeActor(client.playerID)
+    }
+  }
+
+  def _sendToClient {
+    for client in clients {
+      client.encoder.setTickID(state.currentTickID)
+      state.sendUpdateToClient(client.encoder)
+      client.channel.send(client.encoder.flush)
+    }
+  }
+
+  var countdown = TICKS_TO_LAG_PLAYERS_BY
+
+  def _tick {
+    if countdown != 0 {
+      countdown--
+      return
+    }
+
+    state.tickOnServer
+  }
+
+  def tick(seconds double) {
+    sendToClientTimer.add(seconds)
+    tickTimer.add(seconds)
+  }
+}
+
+namespace Server {
+  const SECONDS_BETWEEN_UPDATES_TO_CLIENT = 0.1
+  const TICKS_TO_LAG_PLAYERS_BY = 30
+}

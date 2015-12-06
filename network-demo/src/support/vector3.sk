@@ -1,0 +1,127 @@
+class Vector3 {
+  var x double
+  var y double
+  var z double
+
+  def new {
+  }
+
+  def new(_x double, _y double, _z double) {
+    x = _x
+    y = _y
+    z = _z
+  }
+
+  def clone Vector3 {
+    return new(x, y, z)
+  }
+
+  def copyFrom(v Vector3) {
+    x = v.x
+    y = v.y
+    z = v.z
+  }
+
+  def +(v double) Vector3 {
+    return new(x + v, y + v, z + v)
+  }
+
+  def -(v double) Vector3 {
+    return new(x - v, y - v, z - v)
+  }
+
+  def *(v double) Vector3 {
+    return new(x * v, y * v, z * v)
+  }
+
+  def /(v double) Vector3 {
+    return new(x / v, y / v, z / v)
+  }
+
+  def +(v Vector3) Vector3 {
+    return new(x + v.x, y + v.y, z + v.z)
+  }
+
+  def -(v Vector3) Vector3 {
+    return new(x - v.x, y - v.y, z - v.z)
+  }
+
+  def *(v Vector3) Vector3 {
+    return new(x * v.x, y * v.y, z * v.z)
+  }
+
+  def /(v Vector3) Vector3 {
+    return new(x / v.x, y / v.y, z / v.z)
+  }
+
+  def +=(v double) {
+    x += v
+    y += v
+    z += v
+  }
+
+  def -=(v double) {
+    x -= v
+    y -= v
+    z -= v
+  }
+
+  def *=(v double) {
+    x *= v
+    y *= v
+    z *= v
+  }
+
+  def /=(v double) {
+    x /= v
+    y /= v
+    z /= v
+  }
+
+  def +=(v Vector3) {
+    x += v.x
+    y += v.y
+    z += v.z
+  }
+
+  def -=(v Vector3) {
+    x -= v.x
+    y -= v.y
+    z -= v.z
+  }
+
+  def *=(v Vector3) {
+    x *= v.x
+    y *= v.y
+    z *= v.z
+  }
+
+  def /=(v Vector3) {
+    x /= v.x
+    y /= v.y
+    z /= v.z
+  }
+
+  def length double {
+    return Math.sqrt(lengthSquared)
+  }
+
+  def lengthSquared double {
+    return dot(self)
+  }
+
+  def dot(v Vector3) double {
+    return x * v.x + y * v.y + z * v.z
+  }
+
+  def cross(v Vector3) Vector3 {
+    return new(
+      y * v.z - z * v.y,
+      z * v.x - x * v.z,
+      x * v.y - y * v.x)
+  }
+
+  def toString string {
+    return "Vector3(\(x), \(y), \(z))"
+  }
+}

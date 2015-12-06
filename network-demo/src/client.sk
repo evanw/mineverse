@@ -1,0 +1,75 @@
+class Client :: ServerToClient {
+  const state = GameState.new
+  const encoder = ClientToServerEncoder.new
+  var playerID = -1
+  var player Player = null
+  var sendToServerTimer FixedTimer
+  var tickTimer FixedTimer
+  var messageTickID = 0
+
+  def new(channel OneWayChannel) {
+    var decoder = ServerToClientDecoder.new(self)
+    sendToServerTimer = FixedTimer.new(SECONDS_BETWEEN_UPDATES_TO_SERVER, => channel.send(_sendToServer))
+    tickTimer = FixedTimer.new(GameState.SECONDS_PER_TICK, => _tick)
+    channel.receive = bytes => decoder.decode(bytes)
+  }
+
+  def tick(seconds double) {
+    sendToServerTimer.add(seconds)
+    tickTimer.add(seconds)
+  }
+
+  def _tick {
+    state.tickOnClient
+    if player != null {
+      encoder.setTickID(state.currentTickID)
+      player.sendUpdateToServer(encoder)
+    }
+  }
+
+  def _sendToServer Uint8Array {
+    return encoder.flush
+  }
+
+  def removeActor(id int) {
+    var actor = state.findActor(id)
+    if actor != null {
+      state.removeActor(actor)
+    }
+  }
+
+  def setLocalClientID(id int) {
+    playerID = id
+  }
+
+  def createPlayer(id int) {
+    assert(state.findActor(id) == null)
+    var actor = Player.new(id, state)
+    state.addActor(actor)
+
+    if id == playerID {
+      player = actor
+      player.isLocalPlayer = true
+    }
+  }
+
+  def updatePlayer(id int, position Vector3, velocity Vector3, rotation double) {
+    var actor = state.findActor(id)
+    if actor != null {
+      assert(actor is Player)
+      var state = actor.findOrCreateStateForTick(messageTickID)
+      state.position.copyFrom(position)
+      state.velocity.copyFrom(velocity)
+      state.rotation = rotation
+    }
+  }
+
+  def setTickID(tickID int) {
+    messageTickID = tickID
+  }
+}
+
+namespace Client {
+  const SECONDS_BETWEEN_UPDATES_TO_SERVER = 0.1
+  const TICKS_TO_LAG_PLAYERS_BY = 60
+}

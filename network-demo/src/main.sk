@@ -1,0 +1,120 @@
+@entry
+def main {
+  const NETWORK_DELAY_IN_SECONDS = 0.1
+
+  var server = Server.new
+  var clients List<Client> = []
+
+  const WIDTH = 800
+  const HEIGHT = 600
+  var canvas = document.createElement("canvas")
+  canvas.width = WIDTH
+  canvas.height = HEIGHT
+  document.body.appendChild(canvas)
+  var context = canvas.getContext("2d")
+
+  # Create two players
+  for i in 0..2 {
+    var serverToClient = OneWayChannel.new(NETWORK_DELAY_IN_SECONDS)
+    var clientToServer = OneWayChannel.new(NETWORK_DELAY_IN_SECONDS)
+    serverToClient.connectTo(clientToServer)
+    clients.append(Client.new(clientToServer))
+    server.addClient(serverToClient)
+  }
+
+  var now fn() double = => performance.now() / 1000
+  var oldTime = now()
+
+  # Update runs at the display rate, not the game state tick rate
+  var update fn() = => {
+    var newTime = now()
+    var seconds = Math.min(newTime - oldTime, 0.25)
+    oldTime = newTime
+
+    # Tick everything
+    server.tick(seconds)
+    for client in clients {
+      client.tick(seconds)
+    }
+
+    # Draw everything
+    context.fillStyle = "#EEE"
+    context.fillRect(0, 0, WIDTH, HEIGHT)
+    context.fillStyle = "#000"
+    var x = WIDTH / 2
+    var y = 0
+
+    # Draw the server
+    context.fillText("Server, tick \(server.state.currentTickID)", 10, y + 30)
+    for actor in server.state.actors {
+      context.fillRect(x + actor.currentState.position.x - 25, y + 25, 50, 50)
+
+      # Draw the server's input queue for this actor
+      for i in 0..40 {
+        var state = actor.findStateForTick(server.state.currentTickID + i)
+        var text =
+          state == null ? "_" :
+          state.keys == .LEFT ? "<" :
+          state.keys == .RIGHT ? ">" :
+          "x"
+        context.fillText(text, x + i * 10, y + 85)
+      }
+
+      y += 100
+    }
+    context.fillRect(0, y, WIDTH, 1)
+
+    # Draw the clients
+    for client in clients {
+      context.fillText("Client \(client.playerID), tick \(client.state.currentTickID)", 10, y + 30)
+      for actor in client.state.actors {
+        context.fillRect(x + actor.currentState.position.x - 25, y + 25, 50, 50)
+
+        # Draw the client's state queue for this actor
+        for i in 0..40 {
+          var state = actor.findStateForTick(client.state.currentTickID + i - Client.TICKS_TO_LAG_PLAYERS_BY)
+          var text =
+            state == null ? "_" :
+            "x"
+          context.fillText(text, x + i * 10, y + 85)
+        }
+
+        y += 100
+      }
+      context.fillRect(0, y, WIDTH, 1)
+    }
+
+    requestAnimationFrame(update)
+  }
+
+  var onkey = (e dynamic, value bool) => {
+    if e.ctrlKey || e.altKey || e.metaKey {
+      return # Ignore keyboard shortcuts
+    }
+    switch e.which {
+      case 'A' { clients[0].player?.setKey(.LEFT, value) }
+      case 'D' { clients[0].player?.setKey(.RIGHT, value) }
+      case 'J' { clients[1].player?.setKey(.LEFT, value) }
+      case 'L' { clients[1].player?.setKey(.RIGHT, value) }
+    }
+  }
+
+  document.onkeydown = e => onkey(e, true)
+  document.onkeyup = e => onkey(e, false)
+  window.onblur = => {
+    for client in clients {
+      if client.player != null {
+        client.player.currentState.keys = 0
+      }
+    }
+  }
+
+  update()
+}
+
+@import {
+  const requestAnimationFrame dynamic
+  const performance dynamic
+  const document dynamic
+  const window dynamic
+}

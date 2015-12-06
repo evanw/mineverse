@@ -1,4 +1,5 @@
 .DS_Store
+compiled.js
 /www/*.js
 /www/netconfig.txt
 /node_modules/
