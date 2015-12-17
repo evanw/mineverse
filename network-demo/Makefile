@@ -1,7 +1,7 @@
 BUILD = ../node_modules/.bin/skewc src/*.sk src/*/*.sk ../src/typedarray.sk --target=js --output-file=compiled.js
 
 debug: | ../node_modules
-	$(BUILD)
+	$(BUILD) --js-source-map
 
 release: | ../node_modules
 	$(BUILD) --release

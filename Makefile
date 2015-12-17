@@ -2,8 +2,8 @@ BUILD_CLIENT = node_modules/.bin/skewc src/*.sk --target=js --define:BUILD=CLIEN
 BUILD_SERVER = node_modules/.bin/skewc src/*.sk --target=js --define:BUILD=SERVER --output-file=www/server.js
 
 debug: | node_modules
-	$(BUILD_CLIENT) --inline-functions
-	$(BUILD_SERVER) --inline-functions
+	$(BUILD_CLIENT) --inline-functions --js-source-map
+	$(BUILD_SERVER) --inline-functions --js-source-map
 
 profile: | node_modules
 	$(BUILD_CLIENT) --inline-functions --fold-constants --globalize-functions --define:PROFILE=true
